@@ -702,7 +702,7 @@ let channels = [];
 let channelData = {};
 let activeChannel = '';
 let activeTab = 'today';
-let currentSSE = null;
+let pollTimer = null;
 let lastCounts = {}; // track previous counts per channel to detect new content
 
 // ── Boot ──
@@ -776,39 +776,40 @@ function selectChannel(id) {
   if (badge)  badge.classList.remove('show');
   if (sbadge) sbadge.classList.remove('show');
 
-  // Close previous SSE connection
-  if (currentSSE) { currentSSE.close(); currentSSE = null; }
+  // Stop previous poll
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
   // Show cached data immediately if available, else skeleton
   if (channelData[id]) renderCard(channelData[id]);
   else showSkeleton();
 
-  // Open SSE — server sends initial data + pushes updates every 2 min
-  currentSSE = new EventSource(`${BASE}/api/channel/${id}/live`);
-  currentSSE.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
-    const prev = lastCounts[id];
-
-    // Show badge if count increased and channel is not currently open
-    if (prev !== undefined && total > prev && activeChannel !== id) {
-      const badge  = document.getElementById(`badge-${id}`);
-      const sbadge = document.getElementById(`sbadge-${id}`);
-      if (badge)  { badge.classList.remove('show'); void badge.offsetWidth; badge.classList.add('show'); }
-      if (sbadge) { sbadge.classList.remove('show'); void sbadge.offsetWidth; sbadge.classList.add('show'); }
+  // Fetch + start polling every 2 minutes
+  async function fetchChannel(chId) {
+    try {
+      const res  = await fetch(`${BASE}/api/channel/${chId}`);
+      const data = await res.json();
+      const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
+      const prev  = lastCounts[chId];
+      if (prev !== undefined && total > prev && activeChannel !== chId) {
+        const b  = document.getElementById(`badge-${chId}`);
+        const sb = document.getElementById(`sbadge-${chId}`);
+        if (b)  { b.classList.remove('show');  void b.offsetWidth;  b.classList.add('show'); }
+        if (sb) { sb.classList.remove('show'); void sb.offsetWidth; sb.classList.add('show'); }
+      }
+      lastCounts[chId] = total;
+      channelData[chId] = data;
+      const c  = document.getElementById(`count-${chId}`);
+      const sc = document.getElementById(`scount-${chId}`);
+      if (c)  c.textContent  = total || '—';
+      if (sc) sc.textContent = `${total} خبر اليوم`;
+      if (activeChannel === chId) renderCard(data);
+    } catch(e) {
+      if (activeChannel === chId && !channelData[chId]) renderError(chId);
     }
+  }
 
-    lastCounts[id] = total;
-    channelData[id] = data;
-    const c = document.getElementById(`count-${id}`);
-    const sc = document.getElementById(`scount-${id}`);
-    if(c) c.textContent = total || '—';
-    if(sc) sc.textContent = `${total} خبر اليوم`;
-    if (activeChannel === id) renderCard(data);
-  };
-  currentSSE.onerror = () => {
-    if (activeChannel === id && !channelData[id]) renderError(id);
-  };
+  fetchChannel(id);
+  pollTimer = setInterval(() => fetchChannel(id), 2 * 60 * 1000);
 }
 
 // ── Tab ──
