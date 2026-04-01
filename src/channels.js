@@ -4,8 +4,8 @@ const CHANNELS = [
     nameAr:      'الجزيرة عاجل',
     label:       'عاجل',
     // Try multiple Arabic RSS paths - aljazeera.net is Arabic, aljazeera.com is English
-    rss:         'https://www.aljazeera.net/xml/rss/all.xml',
-    rssFallback: 'https://www.aljazeera.net/xml/rss/arabic.xml',
+    rss:         'https://www.aljazeera.net/rss',
+    rssFallback: 'https://www.aljazeera.net/feed',
     rssLang:     'ar',   // reject feed if articles come back in English
     xHandle:     'AJABreaking',
     xUserId:     '143677916',
@@ -63,8 +63,8 @@ const CHANNELS = [
     id:       'alarabiya',
     nameAr:   'العربية',
     label:    'العربية',
-    rss:      'https://www.alarabiya.net/tools/rss/rssLatestNews.xml',
-    rssFallback: 'https://www.alarabiya.net/rss.xml',
+    rss:      'https://news.google.com/rss/search?q=site:alarabiya.net&hl=ar&gl=SA&ceid=SA:ar',
+    rssFallback: 'https://news.google.com/rss/search?q=alarabiya.net&hl=ar&gl=SA&ceid=SA:ar',
     xHandle:  'AlArabiya',
     xUserId:  '57852680',
   },

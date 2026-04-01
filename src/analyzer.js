@@ -1,31 +1,48 @@
 // ─────────────────────────────────────────────────────────────
 //  بريد — Analysis Engine
-//  Input:  raw articles + tweets (merged)
+//  Input:  raw articles + tweets (merged), optional Claude classifications
 //  Output: topic distribution, direction, trends, AI summary
 // ─────────────────────────────────────────────────────────────
 
 const { TOPICS, DIRECTIONS } = require('./topics');
+const { classifyArticles, generateAISummary } = require('./classifier');
 
 // ── MAIN ENTRY POINT ──────────────────────────────────────────
 
-function analyzeChannel(articles) {
+async function analyzeChannel(articles, channelNameAr = '') {
   if (!articles || articles.length === 0) {
     return { error: 'no_articles' };
   }
 
-  const now      = Date.now();
-  const DAY_MS   = 24 * 60 * 60 * 1000;
-  const WEEK_MS  = 7 * DAY_MS;
+  const now     = Date.now();
+  const DAY_MS  = 24 * 60 * 60 * 1000;
+  const WEEK_MS = 7 * DAY_MS;
 
   const todayArticles = articles.filter(a => now - a.pubDate < DAY_MS);
   const weekArticles  = articles.filter(a => now - a.pubDate < WEEK_MS);
 
-  // Use today's if we have enough, else fall back to all available
+  // Use today's articles if enough, else fall back to most recent 40
   const working = todayArticles.length >= 3 ? todayArticles : articles.slice(0, 40);
 
-  // ── Topic scoring ──
-  const topicScores = scoreTopics(working);
-  const topicDist   = toDistribution(topicScores);
+  // ── Topic distribution ──
+  // Try Claude classification first, fall back to keyword scoring
+  let topicDist;
+  let classifiedBy = 'keywords';
+
+  try {
+    const classifications = await classifyArticles(working);
+    if (classifications) {
+      topicDist   = buildDistributionFromClassifications(classifications, working);
+      classifiedBy = 'claude';
+    }
+  } catch (err) {
+    console.warn('[analyzer] Claude classification failed, using keywords:', err.message);
+  }
+
+  if (!topicDist) {
+    const scores = scoreTopicsWithExclusions(working);
+    topicDist = toDistribution(scores);
+  }
 
   // ── Direction ──
   const direction = topicDist[0]?.direction || 'neutral';
@@ -34,10 +51,23 @@ function analyzeChannel(articles) {
   // ── Week trends ──
   const trends = computeTrends(weekArticles);
 
-  // ── Behavioral summary ──
-  const summary = generateSummary(topicDist, working.length, direction, articles[0]?.source);
+  // ── Behavioral summary — try AI first, fall back to template ──
+  let summary;
+  try {
+    summary = await generateAISummary(
+      channelNameAr,
+      topicDist,
+      working.length,
+      articles[0]?.source === 'twitter'
+    );
+  } catch (err) {
+    console.warn('[analyzer] AI summary failed, using template:', err.message);
+  }
+  if (!summary) {
+    summary = generateSummary(topicDist, working.length, direction, articles[0]?.source);
+  }
 
-  // ── Top stories (deduplicated, sorted by recency + importance) ──
+  // ── Top stories ──
   const topStories = selectTopStories(working);
 
   // ── Source breakdown ──
@@ -54,29 +84,75 @@ function analyzeChannel(articles) {
     summary,
     topStories,
     sources:      { rss: rssCount, twitter: twitterCount },
+    classifiedBy,
     updatedAt:    new Date().toISOString(),
   };
 }
 
-// ── TOPIC SCORING ─────────────────────────────────────────────
+// ── CLAUDE-BASED DISTRIBUTION ─────────────────────────────────
+// Count how many articles were assigned to each topic, then convert to %
 
-function scoreTopics(articles) {
+function buildDistributionFromClassifications(classifications, articles) {
+  const counts = {};
+  TOPICS.forEach(t => { counts[t.id] = 0; });
+
+  classifications.forEach((topicId, i) => {
+    if (topicId === 'other') return;
+    if (counts[topicId] !== undefined) {
+      // Twitter articles get 1.5× weight as direct editorial signals
+      const weight = articles[i]?.source === 'twitter' ? 1.5 : 1.0;
+      counts[topicId] += weight;
+    }
+  });
+
+  const total = Object.values(counts).reduce((s, n) => s + n, 0);
+  if (total === 0) return [];
+
+  return TOPICS
+    .map(t => ({
+      ...t,
+      score: counts[t.id],
+      pct:   Math.round((counts[t.id] / total) * 100),
+    }))
+    .filter(t => t.pct > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((t, i, arr) => {
+      // Fix rounding so percentages sum to exactly 100
+      if (i === 0) {
+        const rest = arr.slice(1).reduce((s, x) => s + x.pct, 0);
+        return { ...t, pct: 100 - rest };
+      }
+      return t;
+    });
+}
+
+// ── KEYWORD SCORING (fallback) ────────────────────────────────
+
+function scoreTopicsWithExclusions(articles) {
   const scores = {};
   TOPICS.forEach(t => { scores[t.id] = 0; });
 
   articles.forEach(art => {
-    const text = `${art.title} ${art.desc}`.toLowerCase();
+    const text = `${art.title} ${art.desc || ''}`.toLowerCase();
+    const sourceMult = art.source === 'twitter' ? 1.5 : 1.0;
 
     TOPICS.forEach(topic => {
+      // Count keyword hits
       let hits = 0;
       topic.keywords.forEach(kw => {
         if (text.includes(kw.toLowerCase())) hits++;
       });
-      if (hits > 0) {
-        // Twitter posts get 1.5× weight — they're direct editorial signals
-        const sourceMult = art.source === 'twitter' ? 1.5 : 1.0;
-        scores[topic.id] += hits * topic.weight * sourceMult;
+      if (hits === 0) return;
+
+      // Check exclusion context — if exclusion keywords are present
+      // and outnumber topic hits, this article likely belongs elsewhere
+      if (topic.contextExclude && topic.contextExclude.length > 0) {
+        const excludeHits = topic.contextExclude
+          .filter(kw => text.includes(kw.toLowerCase())).length;
+        if (excludeHits > 0 && excludeHits >= hits) return; // skip this topic
       }
+
+      scores[topic.id] += hits * topic.weight * sourceMult;
     });
   });
 
@@ -95,7 +171,6 @@ function toDistribution(scores) {
     }))
     .filter(t => t.pct > 0)
     .sort((a, b) => b.score - a.score)
-    // Fix rounding so percentages sum to exactly 100
     .map((t, i, arr) => {
       if (i === 0) {
         const rest = arr.slice(1).reduce((s, x) => s + x.pct, 0);
@@ -110,13 +185,12 @@ function toDistribution(scores) {
 function computeTrends(articles) {
   if (articles.length < 6) return [];
 
-  // Split into first half (older) and second half (recent)
   const mid    = Math.floor(articles.length / 2);
   const older  = articles.slice(mid);
   const recent = articles.slice(0, mid);
 
-  const oldScores  = scoreTopics(older);
-  const newScores  = scoreTopics(recent);
+  const oldScores = scoreTopicsWithExclusions(older);
+  const newScores = scoreTopicsWithExclusions(recent);
 
   const oldTotal = Object.values(oldScores).reduce((s, n) => s + n, 0) || 1;
   const newTotal = Object.values(newScores).reduce((s, n) => s + n, 0) || 1;
@@ -137,7 +211,6 @@ function computeTrends(articles) {
       delta:     t.delta,
       oldPct:    t.oldPct,
       newPct:    t.newPct,
-      // Classify: big jump = spike, moderate = increase/decrease
       type:      Math.abs(t.delta) >= 12 ? 'spike' : t.delta > 0 ? 'up' : 'down',
     }));
 }
@@ -145,23 +218,20 @@ function computeTrends(articles) {
 // ── TOP STORIES ───────────────────────────────────────────────
 
 function selectTopStories(articles) {
-  // Score each article by recency + topic importance + title length (proxy for specificity)
   const now = Date.now();
 
   return articles
     .filter(a => a.title && a.title.length > 10)
-    // Deduplicate similar titles (simple: first 30 chars unique)
     .filter((a, i, arr) => {
       const key = a.title.substring(0, 30).toLowerCase();
       return arr.findIndex(x => x.title.substring(0, 30).toLowerCase() === key) === i;
     })
     .map(a => {
       const ageHours   = (now - a.pubDate) / 3600000;
-      const recency    = Math.max(0, 1 - ageHours / 24); // 1.0 = just now, 0 = 24h ago
-      const titleLen   = Math.min(a.title.length / 80, 1); // longer = more specific
+      const recency    = Math.max(0, 1 - ageHours / 24);
+      const titleLen   = Math.min(a.title.length / 80, 1);
       const twitterBns = a.source === 'twitter' ? 0.2 : 0;
-      const score      = recency * 0.6 + titleLen * 0.2 + twitterBns;
-      return { ...a, score };
+      return { ...a, score: recency * 0.6 + titleLen * 0.2 + twitterBns };
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
@@ -176,7 +246,6 @@ function generateSummary(topicDist, articleCount, direction, primarySource) {
   const second = topicDist[1];
   const third  = topicDist[2];
 
-  // Opener based on dominance level
   let opener;
   if (top.pct >= 50) {
     opener = `تهيمن مادة "${top.nameAr}" بشكل واضح على ${top.pct}٪ من التغطية`;
@@ -186,7 +255,6 @@ function generateSummary(topicDist, articleCount, direction, primarySource) {
     opener = `التغطية متوزعة، يتقدمها "${top.nameAr}" بـ${top.pct}٪`;
   }
 
-  // Editorial frame
   const frames = {
     humanitarian: 'بإطار إنساني يركز على الضحايا والأثر الميداني',
     political:    'بإطار سياسي-دبلوماسي يعكس مواقف الحكومات',
@@ -195,9 +263,7 @@ function generateSummary(topicDist, articleCount, direction, primarySource) {
     global:       'ضمن منظور دولي شامل',
     neutral:      'بتنوع في زوايا التناول',
   };
-  const frame = frames[direction] || '';
 
-  // Tail
   let tail = '';
   if (second && second.pct >= 10) {
     tail = `، يليه "${second.nameAr}" بـ${second.pct}٪`;
@@ -206,12 +272,11 @@ function generateSummary(topicDist, articleCount, direction, primarySource) {
     }
   }
 
-  // Source note
   const srcNote = primarySource === 'twitter'
     ? ' (استناداً إلى تغريدات الحساب الرسمي).'
     : '.';
 
-  return `${opener} ${frame}${tail}${srcNote}`;
+  return `${opener} ${frames[direction] || ''}${tail}${srcNote}`;
 }
 
 module.exports = { analyzeChannel };

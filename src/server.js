@@ -18,6 +18,7 @@ const NodeCache  = require('node-cache');
 const CHANNELS   = require('./channels');
 const { fetchRSS, fetchUserTweets } = require('./fetcher');
 const { analyzeChannel }            = require('./analyzer');
+const { recordToday, getWeekTotal, getWeekBreakdown } = require('./history');
 
 const app   = express();
 const PORT  = process.env.PORT || 3000;
@@ -117,7 +118,12 @@ async function buildChannelData(channel) {
     };
   }
 
-  const analysis = analyzeChannel(allArticles);
+  const analysis = await analyzeChannel(allArticles, channel.nameAr);
+
+  // Save today's count to history, then replace totalWeek with real historical sum
+  recordToday(channel.id, analysis.totalToday);
+  const realWeekTotal = getWeekTotal(channel.id, analysis.totalWeek);
+  const weekBreakdown = getWeekBreakdown(channel.id);
 
   const result = {
     channel: {
@@ -128,6 +134,8 @@ async function buildChannelData(channel) {
     xEnabled,
     xError: xError || null,
     ...analysis,
+    totalWeek:     realWeekTotal,
+    weekBreakdown, // [ { date, count }, ... ] last 7 days oldest→newest
   };
 
   resultCache.set(cacheKey, result);

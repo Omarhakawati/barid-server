@@ -599,34 +599,14 @@
 
   </div>
 
-  <!-- Bottom Nav (mobile) -->
-  <nav class="bottom-nav">
-    <div class="nav-inner">
-      <button class="nav-item" onclick="switchSection('profile')">
-        <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span class="nav-lbl">بريدي</span>
-      </button>
-      <button class="nav-item" onclick="switchSection('chat')" style="margin-top:-8px">
-        <div class="nav-center">
-          <svg width="18" height="18" fill="none" stroke="rgba(100,170,255,0.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <span class="nav-lbl" style="color:rgba(100,170,255,0.55)">محادثة</span>
-      </button>
-      <button class="nav-item active" id="nav-mail" onclick="switchSection('mail')">
-        <div class="nav-active-bg">
-          <svg fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          <span class="nav-lbl">البريد</span>
-        </div>
-      </button>
-    </div>
-  </nav>
+  <div style="text-align:center;padding:24px 16px 32px;font-size:11px;color:rgba(255,255,255,0.2)">إذا كنت تتصفح هذا التطبيق فأعلم أنك من أفضل الناس على الكرة الأرضية</div>
 
 </div>
 
 <script>
-const BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:3000'
-  : window.location.origin;
+  : 'https://barid-server.onrender.com';
 const TOPIC_COLORS = ['#3d7dd4','#c94444','#28956a','#b07a22','#7a4db0','#b04d4d'];
 const CH_COLORS = {
   ajabreaking:'#be1919', bbc:'#b40000', cnn:'#b90a0a',
@@ -708,8 +688,9 @@ async function selectChannel(id) {
     channelData[id] = data;
     const c = document.getElementById(`count-${id}`);
     const sc = document.getElementById(`scount-${id}`);
-    if(c) c.textContent = data.totalToday || '—';
-    if(sc) sc.textContent = `${data.totalToday||0} خبر اليوم`;
+    const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
+    if(c) c.textContent = total || '—';
+    if(sc) sc.textContent = `${total} خبر اليوم`;
     renderCard(data);
   } catch(e) {
     renderError(id);
@@ -800,7 +781,7 @@ function renderToday(d) {
     </div>
     <div class="card-body">
       <div class="chips">
-        <div class="chip"><div class="chip-lbl">اليوم</div><div class="chip-val">${d.totalToday||0}</div><div class="chip-sub">خبر</div></div>
+        <div class="chip"><div class="chip-lbl">اليوم</div><div class="chip-val">${(d.sources?.rss||0)+(d.sources?.twitter||0)||d.totalToday||0}</div><div class="chip-sub">${(d.sources?.twitter||0)>0 ? (d.sources.rss)+' مقال + '+(d.sources.twitter)+' تغريدة' : 'خبر'}</div></div>
         <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${d.totalWeek||0}</div><div class="chip-sub">خبر</div></div>
       </div>
       ${dir ? `<div><span class="dir-pill" style="background:${dirColor}18;border:1px solid ${dirColor}30;color:${dirColor}">
