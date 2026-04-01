@@ -160,10 +160,17 @@ async function buildChannelData(channel) {
 
 // Health check
 app.get('/health', (req, res) => {
+  const rawToken = process.env.X_BEARER_TOKEN || '';
   res.json({
     status: 'ok',
     channels: CHANNELS.length,
     xConfigured: !!(BEARER && BEARER !== 'your_x_bearer_token_here'),
+    xDebug: {
+      envVarSet: rawToken.length > 0,
+      envVarLength: rawToken.length,
+      bearerLength: BEARER.length,
+      bearerPreview: BEARER ? BEARER.substring(0, 8) + '...' : '(empty)',
+    },
     uptime: Math.round(process.uptime()),
     time: new Date().toISOString(),
   });
