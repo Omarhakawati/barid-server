@@ -65,7 +65,7 @@ async function analyzeChannel(articles, channelNameAr = '') {
     console.warn('[analyzer] AI summary failed, using template:', err.message);
   }
   if (!summary) {
-    summary = generateSummary(topicDist, working.length, direction, articles[0]?.source);
+    summary = generateSummary(topicDist, working, direction, articles[0]?.source);
   }
 
   // ── Top stories ──
@@ -238,46 +238,90 @@ function selectTopStories(articles) {
     .slice(0, 5);
 }
 
-// ── BEHAVIORAL SUMMARY ────────────────────────────────────────
+// ── NARRATIVE SUMMARY (no-AI fallback) ───────────────────────
+// Builds a content-based paragraph from actual article titles — no percentages.
 
-function generateSummary(topicDist, articleCount, direction, primarySource) {
-  if (!topicDist.length) return 'لا توجد بيانات كافية للتحليل.';
+function generateSummary(topicDist, articles = [], direction, primarySource) {
+  const titles = (Array.isArray(articles) ? articles : [])
+    .filter(a => a.title && a.title.length > 18)
+    .map(a => a.title.replace(/https?:\/\/\S+/g, '').trim())
+    .filter(t => t.length > 15)
+    .slice(0, 20);
 
-  const top    = topicDist[0];
-  const second = topicDist[1];
-  const third  = topicDist[2];
-
-  let opener;
-  if (top.pct >= 50) {
-    opener = `تهيمن مادة "${top.nameAr}" بشكل واضح على ${top.pct}٪ من التغطية`;
-  } else if (top.pct >= 30) {
-    opener = `يتصدر "${top.nameAr}" المشهد بنسبة ${top.pct}٪`;
-  } else {
-    opener = `التغطية متوزعة، يتقدمها "${top.nameAr}" بـ${top.pct}٪`;
+  if (!titles.length || !topicDist.length) {
+    return 'لا توجد بيانات كافية لإعداد الملخص في الوقت الحالي.';
   }
 
-  const frames = {
-    humanitarian: 'بإطار إنساني يركز على الضحايا والأثر الميداني',
-    political:    'بإطار سياسي-دبلوماسي يعكس مواقف الحكومات',
-    economic:     'مع تركيز اقتصادي تحليلي على الأسواق والمؤشرات',
-    regional:     'مع متابعة إقليمية للتطورات الميدانية',
-    global:       'ضمن منظور دولي شامل',
-    neutral:      'بتنوع في زوايا التناول',
+  const t1 = topicDist[0];
+  const t2 = topicDist[1];
+  const t3 = topicDist[2];
+
+  // Divide titles into three groups for variety
+  const g1 = titles.slice(0, Math.ceil(titles.length * 0.4));
+  const g2 = titles.slice(Math.ceil(titles.length * 0.4), Math.ceil(titles.length * 0.7));
+  const g3 = titles.slice(Math.ceil(titles.length * 0.7));
+
+  const dirPhrases = {
+    humanitarian: 'مع تسليط الضوء على الأبعاد الإنسانية وتداعياتها على المدنيين',
+    political:    'في سياق متابعة المشهد السياسي والتحركات الدبلوماسية',
+    economic:     'مع رصد المتغيرات الاقتصادية وتأثيراتها على المنطقة',
+    regional:     'ضمن متابعة شاملة للتطورات الإقليمية المتسارعة',
+    global:       'من منظور دولي يرصد تشعبات الأحداث وامتداداتها',
+    neutral:      'بتغطية متوازنة توزعت على مجالات متعددة',
   };
 
-  let tail = '';
-  if (second && second.pct >= 10) {
-    tail = `، يليه "${second.nameAr}" بـ${second.pct}٪`;
-    if (third && third.pct >= 8) {
-      tail += ` و"${third.nameAr}" بـ${third.pct}٪`;
-    }
+  const lines = [];
+
+  // Line 1: opening frame
+  if (t1.pct >= 45) {
+    lines.push(`شكّل ملف "${t1.nameAr}" المحور الرئيسي للتغطية الإخبارية لهذه القناة خلال اليوم`);
+  } else if (t1 && t2) {
+    lines.push(`تنوعت اهتمامات القناة الإخبارية اليوم وتوزعت بين ملفات "${t1.nameAr}"${t2 ? ` و"${t2.nameAr}"` : ''}${t3 ? ` و"${t3.nameAr}"` : ''}`);
+  } else {
+    lines.push(`رصدت القناة اليوم جملةً من التطورات المتسارعة على مختلف الصُّعد`);
   }
 
-  const srcNote = primarySource === 'twitter'
-    ? ' (استناداً إلى تغريدات الحساب الرسمي).'
-    : '.';
+  // Lines 2-3: first group of headlines
+  if (g1.length >= 2) {
+    lines.push(`وتصدّرت المشهد الإخباري قضايا من أبرزها "${g1[0]}"، فضلاً عن تطورات "${g1[1]}" التي احتلت حيزاً واسعاً من الاهتمام`);
+  } else if (g1.length === 1) {
+    lines.push(`وتصدّرت المشهد قضية "${g1[0]}" التي استأثرت باهتمام المتابعين`);
+  }
 
-  return `${opener} ${frames[direction] || ''}${tail}${srcNote}`;
+  // Line 4: second group
+  if (g2.length >= 2) {
+    lines.push(`كما أولت القناة اهتماماً بارزاً لمستجدات "${g2[0]}"، ورصدت في السياق ذاته تطورات ملف "${g2[1]}"`);
+  } else if (g2.length === 1) {
+    lines.push(`كما تابعت القناة عن كثب مجريات "${g2[0]}"`);
+  }
+
+  // Line 5: third group
+  if (g3.length >= 2) {
+    lines.push(`ولم تغفل التغطية عن رصد "${g3[0]}" إلى جانب "${g3[1]}" في مشهد إخباري متشعب`);
+  } else if (g3.length === 1) {
+    lines.push(`ولم تغفل التغطية عن متابعة "${g3[0]}"`);
+  }
+
+  // Line 6: second topic context
+  if (t2) {
+    lines.push(`وعلى صعيد "${t2.nameAr}"، واصلت القناة متابعتها المستمرة للمستجدات في هذا الملف الذي يُلقي بظلاله على المشهد العام`);
+  }
+
+  // Line 7: third topic or direction
+  if (t3) {
+    lines.push(`أما ملف "${t3.nameAr}" فقد حضر بجلاء ضمن أولويات التغطية اليومية`);
+  }
+
+  // Line 8: editorial framing
+  lines.push(dirPhrases[direction] || dirPhrases.neutral);
+
+  // Line 9: closing synthesis
+  const srcNote = primarySource === 'twitter'
+    ? 'وقد انعكست هذه الأولويات بوضوح في تغريدات الحساب الرسمي للقناة على منصة X'
+    : 'وقد جاءت هذه التغطية انعكاساً لخط تحريري واضح المعالم';
+  lines.push(srcNote);
+
+  return lines.join('. ') + '.';
 }
 
 module.exports = { analyzeChannel };
