@@ -142,8 +142,6 @@ async function buildChannelData(channel) {
     totalWeek:     realWeekTotal,
     weekBreakdown,
     tracked:       tracking.totalToday,   // accumulated count (only goes up)
-    forecast:      tracking.forecast,     // predicted end-of-day total
-    rate:          tracking.rate,         // articles per hour
     seeding:       tracking.seeding || false,
   };
 

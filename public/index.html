@@ -914,13 +914,13 @@ function renderToday(d) {
             todaySub = 'منذ بدء التتبع';
           }
 
-          // Forecast chip
-          const fcastVal = d.forecast ? d.forecast : '—';
-          const fcastSub = d.forecast ? 'متوقع بنهاية اليوم' : (seeding ? 'يحتاج ٣٠ د' : 'قريباً');
+          const hasHistory = d.totalWeek > d.totalToday;
+          const weekVal    = hasHistory ? d.totalWeek : '—';
+          const weekSub    = hasHistory ? 'خبر هذا الأسبوع' : 'يتراكم يومياً';
 
           return `
           <div class="chip"><div class="chip-lbl">اليوم</div><div class="chip-val">${todayCount}</div><div class="chip-sub">${todaySub}</div></div>
-          <div class="chip"><div class="chip-lbl">التوقع</div><div class="chip-val">${fcastVal}</div><div class="chip-sub">${fcastSub}</div></div>`;
+          <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${weekVal}</div><div class="chip-sub">${weekSub}</div></div>`;
         })()}
       </div>
       ${dir ? `<div><span class="dir-pill" style="background:${dirColor}18;border:1px solid ${dirColor}30;color:${dirColor}">
