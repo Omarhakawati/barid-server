@@ -23,7 +23,10 @@ const { trackArticles } = require('./counters');
 
 const app   = express();
 const PORT  = process.env.PORT || 3000;
-const BEARER = process.env.X_BEARER_TOKEN || '';
+// Decode in case the token was URL-encoded when pasted into Render dashboard
+const BEARER = process.env.X_BEARER_TOKEN
+  ? (() => { try { return decodeURIComponent(process.env.X_BEARER_TOKEN).trim(); } catch { return process.env.X_BEARER_TOKEN.trim(); } })()
+  : '';
 
 // ── CACHE ─────────────────────────────────────────────────────
 // Two separate caches so RSS and Twitter TTLs can differ
