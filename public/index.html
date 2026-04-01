@@ -847,7 +847,8 @@ function renderError(id) {
 
 // ── Render Card ──
 function renderCard(data) {
-  if (data.error || !data.totalToday) { renderError(activeChannel); return; }
+  if (data.error) { renderError(activeChannel); return; }
+  if (!data.totalToday && !data.topics?.length) { renderError(activeChannel); return; }
   let html = '';
   if (activeTab === 'today') html = renderToday(data);
   else if (activeTab === 'week') html = renderWeek(data);

@@ -9,10 +9,11 @@
 
 const { Redis } = require('@upstash/redis');
 
-const redis = new Redis({
+const redisAvailable = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+const redis = redisAvailable ? new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+}) : null;
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -26,31 +27,33 @@ function last7Days() {
   });
 }
 
-// Save today's count — only updates if new count is higher
 async function recordToday(channelId, count) {
-  if (!count || count <= 0) return;
-  const key      = `history:${channelId}:${todayStr()}`;
-  const existing = parseInt(await redis.get(key) || '0');
-  if (count > existing) {
-    await redis.set(key, count, { ex: 60 * 60 * 24 * 30 }); // 30-day TTL
-  }
+  if (!count || count <= 0 || !redisAvailable) return;
+  try {
+    const key      = `history:${channelId}:${todayStr()}`;
+    const existing = parseInt(await redis.get(key) || '0');
+    if (count > existing) await redis.set(key, count, { ex: 60 * 60 * 24 * 30 });
+  } catch (err) { console.error('[history] recordToday error:', err.message); }
 }
 
-// Sum last 7 days from Redis; falls back to liveTotal if no data yet
 async function getWeekTotal(channelId, liveTotal) {
-  const days = last7Days();
-  const keys  = days.map(d => `history:${channelId}:${d}`);
-  const vals  = await redis.mget(...keys);
-  const total = vals.reduce((sum, v) => sum + parseInt(v || '0'), 0);
-  return total > 0 ? total : liveTotal;
+  if (!redisAvailable) return liveTotal;
+  try {
+    const keys  = last7Days().map(d => `history:${channelId}:${d}`);
+    const vals  = await redis.mget(...keys);
+    const total = vals.reduce((sum, v) => sum + parseInt(v || '0'), 0);
+    return total > 0 ? total : liveTotal;
+  } catch (err) { console.error('[history] getWeekTotal error:', err.message); return liveTotal; }
 }
 
-// Returns last 7 days as [{ date, count }] oldest→newest
 async function getWeekBreakdown(channelId) {
-  const days = last7Days().reverse(); // oldest first
-  const keys  = days.map(d => `history:${channelId}:${d}`);
-  const vals  = await redis.mget(...keys);
-  return days.map((date, i) => ({ date, count: parseInt(vals[i] || '0') }));
+  const days = last7Days().reverse();
+  if (!redisAvailable) return days.map(date => ({ date, count: 0 }));
+  try {
+    const keys = days.map(d => `history:${channelId}:${d}`);
+    const vals = await redis.mget(...keys);
+    return days.map((date, i) => ({ date, count: parseInt(vals[i] || '0') }));
+  } catch (err) { console.error('[history] getWeekBreakdown error:', err.message); return days.map(date => ({ date, count: 0 })); }
 }
 
 module.exports = { recordToday, getWeekTotal, getWeekBreakdown };
