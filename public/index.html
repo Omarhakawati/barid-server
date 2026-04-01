@@ -896,18 +896,31 @@ function renderToday(d) {
     <div class="card-body">
       <div class="chips">
         ${(() => {
-          const todayCount = (d.sources?.rss||0)+(d.sources?.twitter||0)||d.totalToday||0;
-          const todaySub   = (d.sources?.twitter||0)>0
-            ? `${d.sources.rss} مقال + ${d.sources.twitter} تغريدة`
-            : 'آخر ٢٤ ساعة';
-          const hasHistory = d.totalWeek > d.totalToday;
-          const weekVal    = hasHistory ? d.totalWeek : '—';
-          const weekSub    = hasHistory ? 'خبر هذا الأسبوع' : 'يتراكم يومياً';
-          const ago = d.updatedAt ? Math.round((Date.now()-d.updatedAt)/60000) : 0;
-          const agoTxt = ago <= 0 ? 'الآن' : `منذ ${ago} د`;
+          // Use accumulated tracked count; fall back to snapshot on first seed
+          const todayCount = (!d.seeding && d.tracked > 0)
+            ? d.tracked
+            : ((d.sources?.rss||0)+(d.sources?.twitter||0)||d.totalToday||0);
+          const seeding = d.seeding || (!d.tracked && d.tracked !== 0);
+
+          // Sub-label: show forecast rate if available, else source breakdown
+          let todaySub;
+          if (seeding) {
+            todaySub = 'جاري المعايرة…';
+          } else if (d.rate) {
+            todaySub = `${d.rate} خبر/ساعة`;
+          } else if ((d.sources?.twitter||0) > 0) {
+            todaySub = `${d.sources.rss} مقال + ${d.sources.twitter} تغريدة`;
+          } else {
+            todaySub = 'منذ بدء التتبع';
+          }
+
+          // Forecast chip
+          const fcastVal = d.forecast ? d.forecast : '—';
+          const fcastSub = d.forecast ? 'متوقع بنهاية اليوم' : (seeding ? 'يحتاج ٣٠ د' : 'قريباً');
+
           return `
-          <div class="chip"><div class="chip-lbl">آخر ٢٤ ساعة</div><div class="chip-val">${todayCount}</div><div class="chip-sub">${todaySub}</div></div>
-          <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${weekVal}</div><div class="chip-sub">${weekSub}</div></div>`;
+          <div class="chip"><div class="chip-lbl">اليوم</div><div class="chip-val">${todayCount}</div><div class="chip-sub">${todaySub}</div></div>
+          <div class="chip"><div class="chip-lbl">التوقع</div><div class="chip-val">${fcastVal}</div><div class="chip-sub">${fcastSub}</div></div>`;
         })()}
       </div>
       ${dir ? `<div><span class="dir-pill" style="background:${dirColor}18;border:1px solid ${dirColor}30;color:${dirColor}">

@@ -19,6 +19,7 @@ const CHANNELS   = require('./channels');
 const { fetchRSS, fetchUserTweets } = require('./fetcher');
 const { analyzeChannel }            = require('./analyzer');
 const { recordToday, getWeekTotal, getWeekBreakdown } = require('./history');
+const { trackArticles } = require('./counters');
 
 const app   = express();
 const PORT  = process.env.PORT || 3000;
@@ -120,8 +121,12 @@ async function buildChannelData(channel) {
 
   const analysis = await analyzeChannel(allArticles, channel.nameAr);
 
+  // Accumulate truly new articles (bypasses RSS feed size limitation)
+  const tracking = trackArticles(channel.id, allArticles);
+
   // Save today's count to history, then replace totalWeek with real historical sum
-  recordToday(channel.id, analysis.totalToday);
+  const countForHistory = tracking.seeding ? analysis.totalToday : tracking.totalToday;
+  recordToday(channel.id, countForHistory);
   const realWeekTotal = getWeekTotal(channel.id, analysis.totalWeek);
   const weekBreakdown = getWeekBreakdown(channel.id);
 
@@ -135,7 +140,11 @@ async function buildChannelData(channel) {
     xError: xError || null,
     ...analysis,
     totalWeek:     realWeekTotal,
-    weekBreakdown, // [ { date, count }, ... ] last 7 days oldest→newest
+    weekBreakdown,
+    tracked:       tracking.totalToday,   // accumulated count (only goes up)
+    forecast:      tracking.forecast,     // predicted end-of-day total
+    rate:          tracking.rate,         // articles per hour
+    seeding:       tracking.seeding || false,
   };
 
   result.updatedAt  = Date.now();
