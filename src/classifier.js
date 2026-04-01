@@ -70,42 +70,98 @@ No markdown, no explanations.`;
   return parsed.map(id => VALID_IDS.has(id) ? id : 'other');
 }
 
-// Generate a comprehensive AI summary of the day's actual content
+// Short behavioral summary (2-3 sentences) — shown in the "اليوم" tab
 async function generateAISummary(channelNameAr, topicDist, articleCount, xEnabled, articles = []) {
   const cl = getClient();
-  if (!cl) return null;
+  if (!cl || !topicDist.length) return null;
 
-  // Build a numbered list of today's article/tweet titles (up to 60 items)
-  const sample = articles.slice(0, 60);
-  const contentLines = sample.map((a, i) => {
-    const prefix = a.source === 'twitter' ? '🐦' : '📰';
-    return `${i + 1}. ${prefix} ${a.title}`;
-  }).join('\n');
+  const topicsText = topicDist.map(t => `- ${t.nameAr}: ${t.pct}٪`).join('\n');
 
-  const prompt = `أنت كاتب صحفي متمرس في تحليل المشهد الإعلامي العربي.
+  const prompt = `أنت محلل إعلامي متخصص في رصد السلوك التحريري لوسائل الإعلام العربية.
 
 القناة: ${channelNameAr}
-العناوين والتغريدات المنشورة اليوم:
+توزيع التغطية اليوم:
+${topicsText}
 
-${contentLines}
-
-المطلوب: فقرة واحدة متكاملة من عشرة أسطر تقريباً تُلخّص أبرز ما تناولته هذه القناة اليوم.
-
-شروط صارمة:
-- لا أرقام ولا نسب مئوية إطلاقاً
-- اذكر القضايا والأحداث الفعلية الواردة في العناوين أعلاه
-- اربط الموضوعات ببعضها في سرد متدفق ومتماسك
-- استخدم أسلوباً تحليلياً ثقافياً راقياً بالعربية الفصحى
-- لا تبدأ بـ "القناة" أو "هذه القناة"
-- لا تُدرج قوائم أو نقاط، فقرة نثرية واحدة فقط`;
+اكتب جملتين إلى ثلاث جمل تصف السلوك التحريري لهذه القناة بناءً على هذا التوزيع.
+- أسلوب تحليلي مختصر
+- لا تذكر الأرقام والنسب حرفياً، بل اعكسها في وصفك
+- لا تبدأ بـ "القناة" أو "هذه القناة"`;
 
   const response = await cl.messages.create({
     model: 'claude-haiku-4-5',
-    max_tokens: 700,
+    max_tokens: 180,
     messages: [{ role: 'user', content: prompt }],
   });
 
   return response.content[0].text.trim();
 }
 
-module.exports = { classifyArticles, generateAISummary };
+// Deep geopolitical analysis — shown in the "مُلخص" tab
+async function generateLongSummary(channelNameAr, articles = []) {
+  const cl = getClient();
+  if (!cl || !articles.length) return null;
+
+  const sample = articles.slice(0, 60);
+  const contentLines = sample.map((a, i) => {
+    const prefix = a.source === 'twitter' ? '🐦' : '📰';
+    return `${i + 1}. ${prefix} ${a.title}`;
+  }).join('\n');
+
+  const prompt = `You are not a summarization tool.
+You are a geopolitical and editorial analyst embedded inside a high-level newsroom.
+
+Your task is to read all incoming articles, posts, and news content from the connected account: ${channelNameAr}
+Then produce a structured, deep analysis — not a surface summary.
+Your analysis must move from "what happened" to "what it means".
+
+Content for today:
+${contentLines}
+
+Follow this exact framework:
+
+1. SIGNAL EXTRACTION (ما الذي يحدث فعلاً؟)
+- Identify the core signals across the content.
+- What are the repeated themes, narratives, or angles?
+- Ignore noise. Focus only on meaningful patterns.
+
+2. POWER MAPPING (خريطة القوة)
+- Who are the key actors involved (states, institutions, individuals)?
+- What does each actor want?
+- What are the visible and hidden interests?
+
+3. TRAJECTORY ANALYSIS (إلى أين يتجه الحدث؟)
+- Is this escalation, stabilization, or transformation?
+- What is the likely short-term and mid-term direction?
+
+4. MEDIA FRAMING (كيف يتم تأطير الخبر؟)
+- How is this source framing the story?
+- What is being emphasized vs ignored?
+
+5. WHAT IS NOT SAID (ما الذي لم يُقل؟)
+- Identify gaps, missing context, or suppressed angles.
+
+6. STRATEGIC INSIGHT (الخلاصة الذكية)
+- Give 2–3 sharp insights that redefine understanding.
+- Avoid generic conclusions. Each insight must add a new lens.
+
+7. COMPRESSION (تلخيص ذكي جداً)
+- Write a 2–3 line synthesis that captures the full meaning.
+
+STRICT RULES:
+- Do NOT summarize each article individually.
+- Think like a strategist, not a reporter.
+- Write in Arabic.
+- Tone: intelligent, sharp, minimal, newsroom-level.
+- Output should feel like: "A briefing for decision-makers, not content for casual readers."`;
+
+  const response = await cl.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 1500,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  return response.content[0].text.trim();
+}
+
+module.exports = { classifyArticles, generateAISummary, generateLongSummary };

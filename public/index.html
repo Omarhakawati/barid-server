@@ -277,11 +277,46 @@
   }
 
   .summary-hero {
-    font-size: 15px;
-    line-height: 2;
+    font-size: 14px;
+    line-height: 1.85;
     color: rgba(255,255,255,0.88);
     text-align: right;
     letter-spacing: 0.01em;
+    white-space: pre-line;
+  }
+
+  .analysis-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .analysis-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--hl);
+    text-align: right;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(102,153,255,0.15);
+  }
+  .analysis-section-body {
+    font-size: 13px;
+    line-height: 1.85;
+    color: rgba(255,255,255,0.82);
+    text-align: right;
+    white-space: pre-line;
+  }
+  .analysis-compression {
+    background: rgba(61,125,212,0.08);
+    border: 1px solid rgba(61,125,212,0.2);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.9);
+    text-align: right;
+    font-weight: 500;
   }
 
   .stat-grid {
@@ -1118,30 +1153,73 @@ function renderNews(d) {
 
 // ── Summary ──
 function renderSummary(d) {
-  const summary = d.summary || '';
+  const raw = d.longSummary || d.summary || '';
 
   const updatedAgo = d.updatedAt
     ? (Math.round((Date.now() - d.updatedAt) / 60000) <= 0 ? 'الآن' : 'منذ ' + Math.round((Date.now() - d.updatedAt) / 60000) + ' د')
     : '';
 
   const totalSources = (d.sources?.rss || 0) + (d.sources?.twitter || 0) || d.totalToday || 0;
-
   const sparkle = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
 
-  const body = summary
-    ? `<div style="padding:20px 20px 24px;display:flex;flex-direction:column;gap:16px">
+  // Section labels map
+  const SECTION_LABELS = {
+    '1': 'ما الذي يحدث فعلاً؟',
+    '2': 'خريطة القوة',
+    '3': 'إلى أين يتجه الحدث؟',
+    '4': 'كيف يتم تأطير الخبر؟',
+    '5': 'ما الذي لم يُقل؟',
+    '6': 'الخلاصة الذكية',
+    '7': 'تلخيص ذكي',
+  };
+
+  // Try to parse structured sections from AI output
+  function renderStructured(text) {
+    // Split on numbered section headers like "1." or "1. SIGNAL" etc.
+    const parts = text.split(/(?=^\d+\.\s)/m).filter(p => p.trim());
+    if (parts.length < 3) {
+      // Not structured — render as plain paragraph
+      return `<div class="summary-hero">${text}</div>`;
+    }
+
+    return parts.map(part => {
+      const headerMatch = part.match(/^(\d+)\.\s*([^\n]+)\n?([\s\S]*)/);
+      if (!headerMatch) return `<div class="summary-hero">${part.trim()}</div>`;
+
+      const num   = headerMatch[1];
+      const title = headerMatch[2].replace(/\(.*?\)/g, '').replace(/[A-Z\s]+/g, '').trim()
+                    || SECTION_LABELS[num] || headerMatch[2].trim();
+      const body  = headerMatch[3].trim()
+                    .replace(/^[-•]\s*/gm, '')  // strip list markers
+                    .trim();
+
+      const label = SECTION_LABELS[num] || title;
+
+      if (num === '7') {
+        return `<div class="analysis-compression">${body}</div>`;
+      }
+
+      return `<div class="analysis-section">
+        <div class="analysis-section-title">${label}</div>
+        <div class="analysis-section-body">${body}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const body = raw
+    ? `<div style="padding:16px 18px 22px;display:flex;flex-direction:column;gap:18px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <span style="font-size:11px;color:var(--t4)">${totalSources} مادة إعلامية · ${updatedAgo}</span>
-          <span class="ai-badge">${sparkle} مُولَّد بالذكاء الاصطناعي</span>
+          <span class="ai-badge">${sparkle} تحليل ذكاء اصطناعي</span>
         </div>
-        <div class="summary-hero">${summary}</div>
+        ${renderStructured(raw)}
       </div>`
-    : `<div class="empty">جاري إعداد الملخص…</div>`;
+    : `<div class="empty">جاري إعداد التحليل…</div>`;
 
   return `<div class="card">
     <div class="card-hdr">
       <div>
-        <div class="card-lbl">ملخص اليوم</div>
+        <div class="card-lbl">تحليل اليوم</div>
         <div class="card-ch">${d.channel.nameAr}</div>
       </div>
     </div>
