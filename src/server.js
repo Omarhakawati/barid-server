@@ -26,9 +26,9 @@ const BEARER = process.env.X_BEARER_TOKEN || '';
 
 // ── CACHE ─────────────────────────────────────────────────────
 // Two separate caches so RSS and Twitter TTLs can differ
-const rssCache = new NodeCache({ stdTTL: parseInt(process.env.RSS_CACHE_TTL)  || 600  });
+const rssCache = new NodeCache({ stdTTL: parseInt(process.env.RSS_CACHE_TTL)  || 120  });
 const xCache   = new NodeCache({ stdTTL: parseInt(process.env.X_CACHE_TTL)    || 900  });
-const resultCache = new NodeCache({ stdTTL: 300 }); // 5-min cache for computed results
+const resultCache = new NodeCache({ stdTTL: 120 }); // 2-min cache for computed results
 
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(cors({
@@ -204,9 +204,10 @@ app.get('/api/channel/:id/live', async (req, res) => {
     send({ error: err.message });
   }
 
-  // Then push updates on cache expiry interval
+  // Push fresh data every 2 minutes — clear RSS + result cache, keep Twitter cache
+  const PUSH_MS = (parseInt(process.env.RSS_CACHE_TTL) || 120) * 1000;
   const interval = setInterval(async () => {
-    // Clear result cache to force fresh fetch
+    rssCache.del(`rss:${channel.id}`);
     resultCache.del(`result:${channel.id}`);
     try {
       const data = await buildChannelData(channel);
@@ -214,7 +215,7 @@ app.get('/api/channel/:id/live', async (req, res) => {
     } catch (err) {
       send({ error: err.message });
     }
-  }, (parseInt(process.env.RSS_CACHE_TTL) || 600) * 1000);
+  }, PUSH_MS);
 
   // Clean up when client disconnects
   req.on('close', () => {

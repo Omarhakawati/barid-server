@@ -662,6 +662,7 @@ let channels = [];
 let channelData = {};
 let activeChannel = '';
 let activeTab = 'today';
+let currentSSE = null;
 
 // ── Boot ──
 async function boot() {
@@ -714,7 +715,7 @@ function renderSidebar() {
 }
 
 // ── Select Channel ──
-async function selectChannel(id) {
+function selectChannel(id) {
   activeChannel = id;
   document.querySelectorAll('.story').forEach(s => {
     s.classList.toggle('active', s.id === `story-${id}`);
@@ -724,22 +725,28 @@ async function selectChannel(id) {
     s.classList.toggle('active', s.id === `sch-${id}`);
   });
 
-  if (channelData[id]) { renderCard(channelData[id]); return; }
+  // Close previous SSE connection
+  if (currentSSE) { currentSSE.close(); currentSSE = null; }
 
-  showSkeleton();
-  try {
-    const res = await fetch(`${BASE}/api/channel/${id}`);
-    const data = await res.json();
+  // Show cached data immediately if available, else skeleton
+  if (channelData[id]) renderCard(channelData[id]);
+  else showSkeleton();
+
+  // Open SSE — server sends initial data + pushes updates every 2 min
+  currentSSE = new EventSource(`${BASE}/api/channel/${id}/live`);
+  currentSSE.onmessage = (e) => {
+    const data = JSON.parse(e.data);
     channelData[id] = data;
+    const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
     const c = document.getElementById(`count-${id}`);
     const sc = document.getElementById(`scount-${id}`);
-    const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
     if(c) c.textContent = total || '—';
     if(sc) sc.textContent = `${total} خبر اليوم`;
-    renderCard(data);
-  } catch(e) {
-    renderError(id);
-  }
+    if (activeChannel === id) renderCard(data);
+  };
+  currentSSE.onerror = () => {
+    if (activeChannel === id && !channelData[id]) renderError(id);
+  };
 }
 
 // ── Tab ──
