@@ -217,16 +217,23 @@
   .story-ring { position: relative; }
   .new-badge {
     position: absolute;
-    top: 1px; left: 1px;
-    width: 10px; height: 10px;
-    border-radius: 50%;
+    top: -3px; left: -3px;
+    min-width: 16px; height: 16px;
+    border-radius: 8px;
     background: #e03333;
     border: 2px solid #000d28;
     display: none;
     z-index: 2;
     animation: badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+    font-size: 8px;
+    font-weight: 700;
+    color: white;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    font-family: inherit;
   }
-  .new-badge.show { display: block; }
+  .new-badge.show { display: flex; }
   @keyframes badge-pop {
     from { transform: scale(0); opacity: 0; }
     to   { transform: scale(1); opacity: 1; }
@@ -236,16 +243,54 @@
   .sidebar-avatar { position: relative; }
   .sidebar-new-badge {
     position: absolute;
-    top: 0; left: 0;
-    width: 9px; height: 9px;
-    border-radius: 50%;
+    top: -2px; left: -2px;
+    min-width: 14px; height: 14px;
+    border-radius: 7px;
     background: #e03333;
     border: 2px solid #000d28;
     display: none;
     z-index: 2;
     animation: badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+    font-size: 7px;
+    font-weight: 700;
+    color: white;
+    align-items: center;
+    justify-content: center;
+    padding: 0 2px;
+    font-family: inherit;
   }
-  .sidebar-new-badge.show { display: block; }
+  .sidebar-new-badge.show { display: flex; }
+
+  /* ── Tweet items ── */
+  .tweet-item {
+    padding: 14px 0;
+    border-bottom: 0.5px solid var(--sub);
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    cursor: pointer;
+  }
+  .tweet-item:last-child { border-bottom: none; }
+  .tweet-text {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--t1);
+    text-align: right;
+    margin-bottom: 10px;
+  }
+  .tweet-metrics {
+    display: flex;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--t3);
+    align-items: center;
+    direction: ltr;
+  }
+  .tweet-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
 
   /* ── Tabs ── */
   .tabs {
@@ -671,6 +716,9 @@
       <button class="tab" data-tab="news" onclick="switchTab('news',this)">
         أخبار <div class="tab-line"></div>
       </button>
+      <button class="tab" data-tab="twitter" onclick="switchTab('twitter',this)">
+        تغريدات <div class="tab-line"></div>
+      </button>
     </div>
 
     <!-- Cards area -->
@@ -708,6 +756,7 @@ let activeChannel = '';
 let activeTab = 'today';
 let pollTimer = null;
 let lastCounts = {}; // track previous counts per channel to detect new content
+let newCounts  = {}; // accumulate new items since badge was shown
 
 // ── Boot ──
 async function boot() {
@@ -775,6 +824,7 @@ function selectChannel(id) {
   });
 
   // Clear new-content badge when opening this channel
+  newCounts[id] = 0;
   const badge  = document.getElementById(`badge-${id}`);
   const sbadge = document.getElementById(`sbadge-${id}`);
   if (badge)  badge.classList.remove('show');
@@ -795,10 +845,12 @@ function selectChannel(id) {
       const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
       const prev  = lastCounts[chId];
       if (prev !== undefined && total > prev && activeChannel !== chId) {
+        newCounts[chId] = (newCounts[chId] || 0) + (total - prev);
+        const label = newCounts[chId] > 9 ? '9+' : String(newCounts[chId]);
         const b  = document.getElementById(`badge-${chId}`);
         const sb = document.getElementById(`sbadge-${chId}`);
-        if (b)  { b.classList.remove('show');  void b.offsetWidth;  b.classList.add('show'); }
-        if (sb) { sb.classList.remove('show'); void sb.offsetWidth; sb.classList.add('show'); }
+        if (b)  { b.textContent = label;  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); }
+        if (sb) { sb.textContent = label; sb.classList.remove('show'); void sb.offsetWidth; sb.classList.add('show'); }
       }
       lastCounts[chId] = total;
       channelData[chId] = data;
@@ -857,6 +909,7 @@ function renderCard(data) {
   let html = '';
   if (activeTab === 'today') html = renderToday(data);
   else if (activeTab === 'week') html = renderWeek(data);
+  else if (activeTab === 'twitter') html = renderTwitter(data);
   else html = renderNews(data);
   document.getElementById('cards-area').innerHTML = html;
 }
@@ -992,7 +1045,7 @@ function renderWeek(d) {
 
 // ── News ──
 function renderNews(d) {
-  const stories = (d.topStories||[]);
+  const stories = (d.topStories||[]).filter(s => s.source !== 'twitter');
   const barColors = ['#c94444','#3d7dd4','#28956a'];
 
   const rows = stories.map((s,i) => `
@@ -1012,6 +1065,74 @@ function renderNews(d) {
     </div>
     <div style="padding:0 16px 8px">
       ${rows || '<div class="empty">لا توجد أخبار</div>'}
+    </div>
+  </div>`;
+}
+
+// ── Twitter ──
+function renderTwitter(d) {
+  const xIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.258 5.63Z"/></svg>`;
+
+  if (!d.xEnabled) {
+    return `<div class="card"><div class="error-card">
+      <div style="opacity:0.35">${xIcon.replace('15','32')}</div>
+      <div style="font-size:15px;font-weight:600">X غير مفعّل</div>
+      <div style="font-size:12px;color:var(--t3)">لم يتم ضبط X Bearer Token</div>
+    </div></div>`;
+  }
+  if (d.xError) {
+    return `<div class="card"><div class="error-card">
+      <div style="opacity:0.35">${xIcon.replace('15','32')}</div>
+      <div style="font-size:15px;font-weight:600">خطأ في X</div>
+      <div style="font-size:12px;color:var(--t3)">${d.xError}</div>
+    </div></div>`;
+  }
+
+  const tweets = (d.topStories||[]).filter(s => s.source === 'twitter');
+  const twitterCount = d.sources?.twitter || 0;
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const diff = (Date.now() - ts) / 60000;
+    if (diff < 60)   return `منذ ${Math.round(diff)} د`;
+    if (diff < 1440) return `منذ ${Math.round(diff/60)} س`;
+    return `منذ ${Math.round(diff/1440)} ي`;
+  }
+
+  const rows = tweets.map(t => {
+    const m = t.metrics || {};
+    const likes    = m.like_count    || 0;
+    const retweets = m.retweet_count || 0;
+    const replies  = m.reply_count   || 0;
+    return `<a class="tweet-item" href="${t.link}" target="_blank" rel="noopener">
+      <div class="tweet-text">${t.title}</div>
+      <div class="tweet-metrics">
+        <span class="tweet-metric">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.963 3.257 4.144 7.129 6.56 3.87-2.416 6.051-4.597 7.126-6.56 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91z"/></svg>
+          ${likes}
+        </span>
+        <span class="tweet-metric">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46L19.5 20.12l-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>
+          ${retweets}
+        </span>
+        <span class="tweet-metric" style="margin-left:auto;color:var(--t4)">${fmtTime(t.pubDate)}</span>
+      </div>
+    </a>`;
+  }).join('');
+
+  return `<div class="card">
+    <div class="card-hdr">
+      <div>
+        <div class="card-lbl">تغريدات</div>
+        <div class="card-ch">${d.channel.nameAr}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;color:var(--t3)">
+        ${xIcon}
+        <div class="card-time">${twitterCount} تغريدة</div>
+      </div>
+    </div>
+    <div style="padding:0 16px 8px">
+      ${rows.length ? rows : '<div class="empty">لا توجد تغريدات</div>'}
     </div>
   </div>`;
 }
