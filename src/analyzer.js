@@ -70,12 +70,12 @@ async function analyzeChannel(articles, channelNameAr = '') {
   // ── Top stories ──
   const topStories = selectTopStories(working);
 
-  // ── Source breakdown ──
-  const rssCount     = articles.filter(a => a.source === 'rss').length;
-  const twitterCount = articles.filter(a => a.source === 'twitter').length;
+  // ── Source breakdown (today only) ──
+  const rssCount     = todayArticles.filter(a => a.source === 'rss').length;
+  const twitterCount = todayArticles.filter(a => a.source === 'twitter').length;
 
   return {
-    totalToday:   working.length,
+    totalToday:   todayArticles.length,
     totalWeek:    weekArticles.length,
     topics:       topicDist,
     direction,

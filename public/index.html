@@ -511,6 +511,51 @@
   }
 
   .empty { padding: 32px; text-align: center; color: var(--t3); font-size: 14px; }
+
+  /* ── Responsive fixes ── */
+
+  /* Tablet (600–899px): wider padding, no sidebar */
+  @media (min-width: 600px) and (max-width: 899px) {
+    .app { max-width: 100%; }
+    .topbar { padding: 16px 32px 14px; }
+    .stories { padding: 4px 32px; }
+    .tabs { padding: 0 32px; }
+    .cards-area { padding: 16px 32px 100px; }
+    .chip-val { font-size: 28px; }
+  }
+
+  /* Desktop (900px+): hide mobile-only elements, fix layout */
+  @media (min-width: 900px) {
+    #topbar-mobile { display: none; }
+    #stories-wrap-mobile { display: none; }
+    .tabs { padding: 0 28px; border-top: 0.5px solid var(--sub); }
+    .cards-area { padding: 20px 28px 32px; }
+    .chip-val { font-size: 28px; }
+  }
+
+  /* Wide screens (1200px+): cap content width so cards don't stretch */
+  @media (min-width: 1200px) {
+    .sidebar { width: 300px; }
+    .cards-area {
+      max-width: 720px;
+      padding-left: 40px;
+      padding-right: 40px;
+    }
+    .tabs { max-width: 720px; }
+    .chip-val { font-size: 32px; }
+  }
+
+  /* Small phones (≤ 360px) */
+  @media (max-width: 360px) {
+    .topbar { padding: 12px 14px 10px; }
+    .logo-text { font-size: 18px; }
+    .stories { padding: 4px 14px; gap: 10px; }
+    .story-ring { width: 48px; height: 48px; }
+    .tabs { padding: 0 14px; }
+    .cards-area { padding: 12px 14px 80px; }
+    .chip-val { font-size: 20px; }
+    .card-body { padding: 12px; gap: 10px; }
+  }
 </style>
 </head>
 <body>
