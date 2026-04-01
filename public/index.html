@@ -261,36 +261,82 @@
   }
   .sidebar-new-badge.show { display: flex; }
 
-  /* ── Tweet items ── */
-  .tweet-item {
-    padding: 14px 0;
-    border-bottom: 0.5px solid var(--sub);
-    text-decoration: none;
-    color: inherit;
-    display: block;
-    cursor: pointer;
-  }
-  .tweet-item:last-child { border-bottom: none; }
-  .tweet-text {
-    font-size: 14px;
-    line-height: 1.65;
-    color: var(--t1);
-    text-align: right;
-    margin-bottom: 10px;
-  }
-  .tweet-metrics {
-    display: flex;
-    gap: 14px;
-    font-size: 11px;
-    color: var(--t3);
-    align-items: center;
-    direction: ltr;
-  }
-  .tweet-metric {
+  /* ── Summary tab ── */
+  .ai-badge {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 5px;
+    padding: 4px 11px;
+    border-radius: 50px;
+    background: linear-gradient(135deg, rgba(61,125,212,0.12), rgba(120,70,240,0.12));
+    border: 1px solid rgba(110,150,255,0.22);
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(150,185,255,0.85);
+    letter-spacing: 0.05em;
   }
+
+  .summary-hero {
+    font-size: 14px;
+    line-height: 1.9;
+    color: var(--t1);
+    text-align: right;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+
+  .stat-card {
+    border-radius: 16px;
+    padding: 14px 12px 12px;
+    text-align: center;
+    background: var(--chip);
+    border: 1px solid var(--chip-border);
+    border-top: 1px solid rgba(255,255,255,0.13);
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, var(--glow, rgba(61,125,212,0.08)), transparent 70%);
+    pointer-events: none;
+  }
+
+  .stat-num {
+    font-size: 36px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    margin-bottom: 5px;
+  }
+  .stat-grid.three .stat-num { font-size: 26px; }
+
+  .stat-lbl {
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--t3);
+  }
+  .stat-sub {
+    font-size: 9px;
+    color: var(--t4);
+    margin-top: 3px;
+  }
+
+  .topic-bars { display: flex; flex-direction: column; gap: 9px; }
+  .topic-bar-row2 { display: flex; flex-direction: column; gap: 5px; }
+  .topic-bar-meta { display: flex; justify-content: space-between; align-items: baseline; }
+  .topic-bar-name { font-size: 12px; color: var(--t2); text-align: right; }
+  .topic-bar-pct  { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .topic-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.06); overflow: hidden; }
+  .topic-fill  { height: 100%; border-radius: 2px; }
 
   /* ── Tabs ── */
   .tabs {
@@ -716,8 +762,8 @@
       <button class="tab" data-tab="news" onclick="switchTab('news',this)">
         أخبار <div class="tab-line"></div>
       </button>
-      <button class="tab" data-tab="twitter" onclick="switchTab('twitter',this)">
-        تغريدات <div class="tab-line"></div>
+      <button class="tab" data-tab="summary" onclick="switchTab('summary',this)">
+        مُلخص <div class="tab-line"></div>
       </button>
     </div>
 
@@ -909,7 +955,7 @@ function renderCard(data) {
   let html = '';
   if (activeTab === 'today') html = renderToday(data);
   else if (activeTab === 'week') html = renderWeek(data);
-  else if (activeTab === 'twitter') html = renderTwitter(data);
+  else if (activeTab === 'summary') html = renderSummary(data);
   else html = renderNews(data);
   document.getElementById('cards-area').innerHTML = html;
 }
@@ -1069,70 +1115,85 @@ function renderNews(d) {
   </div>`;
 }
 
-// ── Twitter ──
-function renderTwitter(d) {
-  const xIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.258 5.63Z"/></svg>`;
+// ── Summary ──
+function renderSummary(d) {
+  const summary = d.summary || '';
+  const topics  = (d.topics || []).slice(0, 4);
+  const colors  = TOPIC_COLORS;
 
-  if (!d.xEnabled) {
-    return `<div class="card"><div class="error-card">
-      <div style="opacity:0.35">${xIcon.replace('15','32')}</div>
-      <div style="font-size:15px;font-weight:600">X غير مفعّل</div>
-      <div style="font-size:12px;color:var(--t3)">لم يتم ضبط X Bearer Token</div>
-    </div></div>`;
-  }
-  if (d.xError) {
-    return `<div class="card"><div class="error-card">
-      <div style="opacity:0.35">${xIcon.replace('15','32')}</div>
-      <div style="font-size:15px;font-weight:600">خطأ في X</div>
-      <div style="font-size:12px;color:var(--t3)">${d.xError}</div>
-    </div></div>`;
-  }
+  const todayCount = (!d.seeding && d.tracked > 0)
+    ? d.tracked
+    : ((d.sources?.rss || 0) + (d.sources?.twitter || 0) || d.totalToday || 0);
+  const weekCount = (d.totalWeek > d.totalToday) ? d.totalWeek : null;
+  const rate      = d.rate || null;
 
-  const tweets = (d.topStories||[]).filter(s => s.source === 'twitter');
-  const twitterCount = d.sources?.twitter || 0;
+  const hasThree = weekCount && rate;
+  const gridClass = hasThree ? 'stat-grid three' : 'stat-grid';
 
-  function fmtTime(ts) {
-    if (!ts) return '';
-    const diff = (Date.now() - ts) / 60000;
-    if (diff < 60)   return `منذ ${Math.round(diff)} د`;
-    if (diff < 1440) return `منذ ${Math.round(diff/60)} س`;
-    return `منذ ${Math.round(diff/1440)} ي`;
-  }
-
-  const rows = tweets.map(t => {
-    const m = t.metrics || {};
-    const likes    = m.like_count    || 0;
-    const retweets = m.retweet_count || 0;
-    const replies  = m.reply_count   || 0;
-    return `<a class="tweet-item" href="${t.link}" target="_blank" rel="noopener">
-      <div class="tweet-text">${t.title}</div>
-      <div class="tweet-metrics">
-        <span class="tweet-metric">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.963 3.257 4.144 7.129 6.56 3.87-2.416 6.051-4.597 7.126-6.56 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91z"/></svg>
-          ${likes}
-        </span>
-        <span class="tweet-metric">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46L19.5 20.12l-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>
-          ${retweets}
-        </span>
-        <span class="tweet-metric" style="margin-left:auto;color:var(--t4)">${fmtTime(t.pubDate)}</span>
+  const statCards = `
+    <div class="${gridClass}">
+      <div class="stat-card" style="--glow:rgba(102,153,255,0.10)">
+        <div class="stat-num" style="color:#6699ff">${todayCount}</div>
+        <div class="stat-lbl">اليوم</div>
+        ${rate && !hasThree ? `<div class="stat-sub">${rate} خبر/س</div>` : ''}
       </div>
-    </a>`;
-  }).join('');
+      <div class="stat-card" style="--glow:rgba(40,149,106,0.10)">
+        <div class="stat-num" style="color:#28956a">${weekCount || '—'}</div>
+        <div class="stat-lbl">الأسبوع</div>
+        <div class="stat-sub">${weekCount ? 'خبر هذا الأسبوع' : 'يتراكم يومياً'}</div>
+      </div>
+      ${hasThree ? `
+      <div class="stat-card" style="--glow:rgba(176,122,34,0.10)">
+        <div class="stat-num" style="color:#b07a22">${rate}</div>
+        <div class="stat-lbl">خبر/ساعة</div>
+      </div>` : ''}
+    </div>`;
+
+  const topicBars = topics.length ? `
+    <div class="sep"></div>
+    <div class="slbl">توزيع التغطية</div>
+    <div class="topic-bars">
+      ${topics.map((t, i) => `
+        <div class="topic-bar-row2">
+          <div class="topic-bar-meta">
+            <span class="topic-bar-pct" style="color:${colors[i]}">${t.pct}%</span>
+            <span class="topic-bar-name">${t.nameAr}</span>
+          </div>
+          <div class="topic-track">
+            <div class="topic-fill" style="width:${t.pct}%;background:${colors[i]}"></div>
+          </div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const words = (d.topWords || []).slice(0, 5).map(w =>
+    `<span class="word-tag"><span>${w.word}</span><span class="word-count">${w.count}</span></span>`
+  ).join('');
+
+  const updatedAgo = d.updatedAt
+    ? (Math.round((Date.now() - d.updatedAt) / 60000) <= 0 ? 'الآن' : 'منذ ' + Math.round((Date.now() - d.updatedAt) / 60000) + ' د')
+    : '';
+
+  const sparkle = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
 
   return `<div class="card">
     <div class="card-hdr">
       <div>
-        <div class="card-lbl">تغريدات</div>
+        <div class="card-lbl">ملخص اليوم</div>
         <div class="card-ch">${d.channel.nameAr}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;color:var(--t3)">
-        ${xIcon}
-        <div class="card-time">${twitterCount} تغريدة</div>
-      </div>
+      <div class="card-time">${updatedAgo}</div>
     </div>
-    <div style="padding:0 16px 8px">
-      ${rows.length ? rows : '<div class="empty">لا توجد تغريدات</div>'}
+    <div class="card-body">
+      ${statCards}
+      ${summary ? `
+        <div class="sep"></div>
+        <div style="display:flex;justify-content:flex-end">
+          <span class="ai-badge">${sparkle} مُولَّد بالذكاء الاصطناعي</span>
+        </div>
+        <div class="summary-hero">${summary.replace(/(\d+%?)/g, '<span class="hl">$1</span>')}</div>
+      ` : ''}
+      ${topicBars}
+      ${words ? `<div class="sep"></div><div class="slbl">أبرز الكلمات</div><div class="words">${words}</div>` : ''}
     </div>
   </div>`;
 }
