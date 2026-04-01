@@ -891,12 +891,24 @@ function renderToday(d) {
         <div class="card-lbl">ملخص</div>
         <div class="card-ch">${d.channel.nameAr}</div>
       </div>
-      <div class="card-time">${d.updatedAgo||''}</div>
+      <div class="card-time">${d.updatedAt ? (Math.round((Date.now()-d.updatedAt)/60000) <= 0 ? 'الآن' : 'منذ '+Math.round((Date.now()-d.updatedAt)/60000)+' د') : ''}</div>
     </div>
     <div class="card-body">
       <div class="chips">
-        <div class="chip"><div class="chip-lbl">اليوم</div><div class="chip-val">${(d.sources?.rss||0)+(d.sources?.twitter||0)||d.totalToday||0}</div><div class="chip-sub">${(d.sources?.twitter||0)>0 ? (d.sources.rss)+' مقال + '+(d.sources.twitter)+' تغريدة' : 'خبر'}</div></div>
-        <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${d.totalWeek||0}</div><div class="chip-sub">خبر</div></div>
+        ${(() => {
+          const todayCount = (d.sources?.rss||0)+(d.sources?.twitter||0)||d.totalToday||0;
+          const todaySub   = (d.sources?.twitter||0)>0
+            ? `${d.sources.rss} مقال + ${d.sources.twitter} تغريدة`
+            : 'آخر ٢٤ ساعة';
+          const hasHistory = d.totalWeek > d.totalToday;
+          const weekVal    = hasHistory ? d.totalWeek : '—';
+          const weekSub    = hasHistory ? 'خبر هذا الأسبوع' : 'يتراكم يومياً';
+          const ago = d.updatedAt ? Math.round((Date.now()-d.updatedAt)/60000) : 0;
+          const agoTxt = ago <= 0 ? 'الآن' : `منذ ${ago} د`;
+          return `
+          <div class="chip"><div class="chip-lbl">آخر ٢٤ ساعة</div><div class="chip-val">${todayCount}</div><div class="chip-sub">${todaySub}</div></div>
+          <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${weekVal}</div><div class="chip-sub">${weekSub}</div></div>`;
+        })()}
       </div>
       ${dir ? `<div><span class="dir-pill" style="background:${dirColor}18;border:1px solid ${dirColor}30;color:${dirColor}">
         <span class="dir-dot" style="background:${dirColor}"></span>${dir.ar}

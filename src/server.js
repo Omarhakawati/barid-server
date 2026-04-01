@@ -138,6 +138,8 @@ async function buildChannelData(channel) {
     weekBreakdown, // [ { date, count }, ... ] last 7 days oldest→newest
   };
 
+  result.updatedAt  = Date.now();
+  result.updatedAgo = 'الآن';
   resultCache.set(cacheKey, result);
   return result;
 }
