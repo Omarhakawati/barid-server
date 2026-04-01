@@ -1330,9 +1330,24 @@ function renderAggregate(d) {
     }).join('');
   }
 
+  // Fallback: build a brief narrative from channel breakdown
+  function aggregateFallback() {
+    const top = (d.channelBreakdown || []).slice(0, 3);
+    if (!top.length) return 'لا توجد بيانات كافية.';
+    const leader = top[0];
+    const lines = [];
+    lines.push(`رصدت قنوات بريد اليوم ما مجموعه ${d.totalToday || 0} مادة إعلامية موزعة على ${(d.channelBreakdown||[]).length} قناة.`);
+    lines.push(`تصدّرت ${leader.nameAr} المشهد بـ${leader.totalToday} خبر${leader.topTopic ? '، مع تركيز واضح على ملف "' + leader.topTopic + '"' : ''}.`);
+    if (top[1]) lines.push(`في المرتبة الثانية جاءت ${top[1].nameAr} بـ${top[1].totalToday} خبراً${top[1].topTopic ? ' يتمحور حول "' + top[1].topTopic + '"' : ''}.`);
+    if (top[2]) lines.push(`فيما غطّت ${top[2].nameAr} ${top[2].totalToday} خبراً.`);
+    const topTopics = (d.topics || []).slice(0, 3).map(t => t.nameAr).join(' و');
+    if (topTopics) lines.push(`أبرز المواضيع المشتركة اليوم: ${topTopics}.`);
+    return lines.join(' ');
+  }
+
   const summaryHtml = d.longSummary
     ? `<div style="display:flex;flex-direction:column;gap:18px">${renderStructured(d.longSummary)}</div>`
-    : `<div class="empty">جاري إعداد التحليل الشامل…</div>`;
+    : `<div class="summary-hero" style="font-size:13px;line-height:1.9">${aggregateFallback()}</div>`;
 
   return `
   <div class="card">
