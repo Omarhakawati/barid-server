@@ -18,6 +18,7 @@ const NodeCache  = require('node-cache');
 const CHANNELS   = require('./channels');
 const { fetchRSS, fetchUserTweets } = require('./fetcher');
 const { analyzeChannel }            = require('./analyzer');
+const { generateLongSummary }       = require('./classifier');
 const { recordToday, getWeekTotal, getWeekBreakdown } = require('./history');
 const { trackArticles } = require('./counters');
 
@@ -257,6 +258,86 @@ app.get('/api/channel/:id/refresh', (req, res) => {
   resultCache.del(`result:${id}`);
   log('info', `Cache cleared: ${id}`);
   res.json({ ok: true, message: `Cache cleared for ${id}` });
+});
+
+// Aggregate view — combine all channels into one summary
+app.get('/api/aggregate', async (req, res) => {
+  try {
+    // Fetch all channels concurrently (mostly from cache)
+    const results = await Promise.allSettled(CHANNELS.map(ch => buildChannelData(ch)));
+
+    const successful = results
+      .filter(r => r.status === 'fulfilled' && !r.value.error)
+      .map(r => r.value);
+
+    if (successful.length === 0) return res.json({ error: 'no_data' });
+
+    // Aggregate counts
+    const totalToday = successful.reduce((s, d) => s + (d.totalToday || 0), 0);
+    const totalWeek  = successful.reduce((s, d) => s + (d.totalWeek  || 0), 0);
+
+    // Aggregate topic distribution weighted by each channel's totalToday
+    const topicMap = {};
+    successful.forEach(d => {
+      const weight = d.totalToday || 1;
+      (d.topics || []).forEach(t => {
+        if (!topicMap[t.id]) topicMap[t.id] = { id: t.id, nameAr: t.nameAr, direction: t.direction, score: 0 };
+        topicMap[t.id].score += (t.pct / 100) * weight;
+      });
+    });
+    const totalScore = Object.values(topicMap).reduce((s, t) => s + t.score, 0) || 1;
+    const topics = Object.values(topicMap)
+      .map(t => ({ ...t, pct: Math.round((t.score / totalScore) * 100) }))
+      .filter(t => t.pct > 0)
+      .sort((a, b) => b.pct - a.pct);
+    if (topics.length) {
+      const rest = topics.slice(1).reduce((s, t) => s + t.pct, 0);
+      topics[0] = { ...topics[0], pct: 100 - rest };
+    }
+
+    // Collect top stories from all channels (deduplicated by title prefix)
+    const seen = new Set();
+    const allStories = successful.flatMap(d =>
+      (d.topStories || []).map(s => ({ ...s, channelNameAr: d.channel.nameAr, channelId: d.channel.id }))
+    ).filter(s => {
+      const key = s.title.substring(0, 35).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 60);
+
+    // Generate cross-channel AI summary (one Claude call)
+    let longSummary = null;
+    try {
+      longSummary = await generateLongSummary('جميع القنوات العربية', allStories);
+    } catch (err) {
+      log('warn', 'Aggregate summary failed:', err.message);
+    }
+
+    // Per-channel breakdown
+    const channelBreakdown = successful.map(d => ({
+      id:         d.channel.id,
+      nameAr:     d.channel.nameAr,
+      label:      d.channel.label,
+      totalToday: d.totalToday || 0,
+      topTopic:   d.topics?.[0]?.nameAr || '',
+      summary:    d.summary || '',
+    })).sort((a, b) => b.totalToday - a.totalToday);
+
+    res.json({
+      channel:          { id: 'barid', nameAr: 'بريد', label: 'بريد' },
+      totalToday,
+      totalWeek,
+      topics,
+      longSummary,
+      topStories:       allStories.slice(0, 10),
+      channelBreakdown,
+      updatedAt:        Date.now(),
+    });
+  } catch (err) {
+    log('error', 'Aggregate API error', err.message);
+    res.status(500).json({ error: 'internal_error', message: err.message });
+  }
 });
 
 // ── STATIC FALLBACK ───────────────────────────────────────────

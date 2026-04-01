@@ -190,6 +190,13 @@
     font-weight: 700;
     color: var(--t1);
     overflow: hidden;
+    position: relative;
+  }
+  .story-inner img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
   }
 
   .story-name {
@@ -641,6 +648,13 @@
       font-size: 13px;
       font-weight: 700;
       flex-shrink: 0;
+      overflow: hidden;
+    }
+    .sidebar-avatar img {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
     }
     .sidebar-ch.active .sidebar-avatar {
       border-color: var(--blue);
@@ -832,6 +846,20 @@ const CH_COLORS = {
   sky:'#005faf', france24:'#004191', dw:'#0069af', rtarabic:'#8c0000', alarabiya:'#006633'
 };
 
+// Special aggregate channel (always first)
+const BARID_CH = { id: 'barid', nameAr: 'بريد', label: 'بريد', xHandle: null };
+// Inline SVG logo for barid circle (small version)
+const BARID_LOGO_SVG = `<svg viewBox="0 0 64 64" fill="none" style="width:65%;height:65%">
+  <path d="M38 22 L46 27 L46 48 L38 45 Z" fill="#8a1525"/>
+  <path d="M10 22 L38 22 L38 45 L10 45 Z" fill="#c8243c"/>
+  <path d="M10 22 Q10 12 24 12 Q38 12 38 22" fill="#a81c30"/>
+  <path d="M38 22 Q38 12 43 16 L46 27 Q42 22 38 22" fill="#6a0f1c"/>
+  <rect x="15" y="29" width="16" height="3" rx="1.5" fill="#6a0f1c"/>
+  <circle cx="43" cy="10" r="6" fill="#000d28"/>
+  <circle cx="43" cy="10" r="4.5" fill="#3d7dd4"/>
+  <circle cx="43" cy="10" r="2" fill="white" opacity="0.9"/>
+</svg>`;
+
 let channels = [];
 let channelData = {};
 let activeChannel = '';
@@ -845,7 +873,7 @@ async function boot() {
   try {
     const res = await fetch(`${BASE}/api/channels`);
     const json = await res.json();
-    channels = json.channels || [];
+    channels = [BARID_CH, ...(json.channels || [])];
     renderStories();
     renderSidebar();
     if (channels.length) selectChannel(channels[0].id);
@@ -860,6 +888,31 @@ async function boot() {
   }
 }
 
+// ── Avatar helper ──
+function avatarInner(ch) {
+  if (ch.id === 'barid') {
+    return BARID_LOGO_SVG;
+  }
+  if (ch.xHandle) {
+    const letter = ch.nameAr.charAt(0);
+    return `<img src="https://unavatar.io/twitter/${ch.xHandle}" alt="${letter}" onerror="this.style.display='none'">
+            <span style="position:absolute">${letter}</span>`;
+  }
+  return ch.nameAr.charAt(0);
+}
+
+function sidebarAvatarInner(ch) {
+  if (ch.id === 'barid') {
+    return BARID_LOGO_SVG;
+  }
+  if (ch.xHandle) {
+    const letter = ch.nameAr.charAt(0);
+    return `<img src="https://unavatar.io/twitter/${ch.xHandle}" alt="${letter}" onerror="this.style.display='none'">
+            <span style="position:absolute;z-index:0">${letter}</span>`;
+  }
+  return ch.nameAr.charAt(0);
+}
+
 // ── Stories ──
 function renderStories() {
   const rail = document.getElementById('stories-rail');
@@ -867,8 +920,8 @@ function renderStories() {
     <button class="story ${ch.id === activeChannel ? 'active' : ''}" id="story-${ch.id}" onclick="selectChannel('${ch.id}')">
       <div class="story-ring ${ch.id === activeChannel ? 'active' : ''}">
         <div class="new-badge" id="badge-${ch.id}"></div>
-        <div class="story-inner" style="background:${CH_COLORS[ch.id]||'#080f22'}">
-          ${ch.nameAr.charAt(0)}
+        <div class="story-inner" style="background:${ch.id==='barid'?'#000d28':CH_COLORS[ch.id]||'#080f22'}">
+          ${avatarInner(ch)}
         </div>
       </div>
       <span class="story-name">${ch.nameAr}</span>
@@ -882,9 +935,9 @@ function renderSidebar() {
   const el = document.getElementById('sidebar-channels');
   el.innerHTML = channels.map(ch => `
     <button class="sidebar-ch ${ch.id === activeChannel ? 'active' : ''}" id="sch-${ch.id}" onclick="selectChannel('${ch.id}')">
-      <div class="sidebar-avatar" style="background:${CH_COLORS[ch.id]||'#080f22'}">
+      <div class="sidebar-avatar" style="background:${ch.id==='barid'?'#000d28':CH_COLORS[ch.id]||'#080f22'}">
         <div class="sidebar-new-badge" id="sbadge-${ch.id}"></div>
-        ${ch.nameAr.charAt(0)}
+        ${sidebarAvatarInner(ch)}
       </div>
       <div class="sidebar-info">
         <div class="sidebar-name">${ch.nameAr}</div>
@@ -922,9 +975,12 @@ function selectChannel(id) {
   // Fetch + start polling every 2 minutes
   async function fetchChannel(chId) {
     try {
-      const res  = await fetch(`${BASE}/api/channel/${chId}`);
+      const url  = chId === 'barid' ? `${BASE}/api/aggregate` : `${BASE}/api/channel/${chId}`;
+      const res  = await fetch(url);
       const data = await res.json();
-      const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
+      const total = chId === 'barid'
+        ? (data.totalToday || 0)
+        : ((data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0);
       const prev  = lastCounts[chId];
       if (prev !== undefined && total > prev && activeChannel !== chId) {
         newCounts[chId] = (newCounts[chId] || 0) + (total - prev);
@@ -939,7 +995,7 @@ function selectChannel(id) {
       const c  = document.getElementById(`count-${chId}`);
       const sc = document.getElementById(`scount-${chId}`);
       if (c)  c.textContent  = total || '—';
-      if (sc) sc.textContent = `${total} خبر اليوم`;
+      if (sc) sc.textContent = chId === 'barid' ? `${total} خبر إجمالي` : `${total} خبر اليوم`;
       if (activeChannel === chId) renderCard(data);
     } catch(e) {
       if (activeChannel === chId && !channelData[chId]) renderError(chId);
@@ -988,6 +1044,11 @@ function renderError(id) {
 function renderCard(data) {
   if (data.error) { renderError(activeChannel); return; }
   if (!data.totalToday && !data.topics?.length) { renderError(activeChannel); return; }
+  // Aggregate channel has its own renderer
+  if (activeChannel === 'barid') {
+    document.getElementById('cards-area').innerHTML = renderAggregate(data);
+    return;
+  }
   let html = '';
   if (activeTab === 'today') html = renderToday(data);
   else if (activeTab === 'week') html = renderWeek(data);
@@ -1224,6 +1285,79 @@ function renderSummary(d) {
       </div>
     </div>
     ${body}
+  </div>`;
+}
+
+// ── Aggregate (بريد channel) ──
+function renderAggregate(d) {
+  const sparkle = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
+  const updatedAgo = d.updatedAt
+    ? (Math.round((Date.now() - d.updatedAt) / 60000) <= 0 ? 'الآن' : 'منذ ' + Math.round((Date.now() - d.updatedAt) / 60000) + ' د')
+    : '';
+
+  // Per-channel breakdown rows
+  const maxCount = Math.max(...(d.channelBreakdown || []).map(c => c.totalToday || 0), 1);
+  const chRows = (d.channelBreakdown || []).map(c => {
+    const pct = Math.round((c.totalToday / maxCount) * 100);
+    const color = CH_COLORS[c.id] || '#3d7dd4';
+    return `<div style="display:flex;flex-direction:column;gap:5px;padding:8px 0;border-bottom:0.5px solid var(--sub)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-size:13px;font-weight:600;color:${color};font-variant-numeric:tabular-nums">${c.totalToday}</span>
+        <span style="font-size:13px;color:var(--t1);text-align:right">${c.nameAr}</span>
+      </div>
+      ${c.topTopic ? `<div style="font-size:10px;color:var(--t3);text-align:right">${c.topTopic}</div>` : ''}
+      <div class="topic-track"><div class="topic-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
+  }).join('');
+
+  // AI summary sections
+  const SECTION_LABELS = {
+    '1': 'ما الذي يحدث فعلاً؟', '2': 'خريطة القوة', '3': 'إلى أين يتجه الحدث؟',
+    '4': 'كيف يتم تأطير الخبر؟', '5': 'ما الذي لم يُقل؟',
+    '6': 'الخلاصة الذكية', '7': 'تلخيص ذكي',
+  };
+  function renderStructured(text) {
+    const parts = text.split(/(?=^\d+\.\s)/m).filter(p => p.trim());
+    if (parts.length < 3) return `<div class="summary-hero">${text}</div>`;
+    return parts.map(part => {
+      const m = part.match(/^(\d+)\.\s*([^\n]+)\n?([\s\S]*)/);
+      if (!m) return `<div class="summary-hero">${part.trim()}</div>`;
+      const num = m[1];
+      const body = m[3].trim().replace(/^[-•]\s*/gm, '').trim();
+      const label = SECTION_LABELS[num] || m[2].trim();
+      if (num === '7') return `<div class="analysis-compression">${body}</div>`;
+      return `<div class="analysis-section"><div class="analysis-section-title">${label}</div><div class="analysis-section-body">${body}</div></div>`;
+    }).join('');
+  }
+
+  const summaryHtml = d.longSummary
+    ? `<div style="display:flex;flex-direction:column;gap:18px">${renderStructured(d.longSummary)}</div>`
+    : `<div class="empty">جاري إعداد التحليل الشامل…</div>`;
+
+  return `
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <div class="card-lbl">جميع القنوات</div>
+        <div class="card-ch">بريد — نظرة شاملة</div>
+      </div>
+      <div class="card-time">${updatedAgo}</div>
+    </div>
+    <div class="card-body">
+      <div class="chips">
+        <div class="chip"><div class="chip-lbl">إجمالي اليوم</div><div class="chip-val">${d.totalToday || 0}</div><div class="chip-sub">من جميع القنوات</div></div>
+        <div class="chip"><div class="chip-lbl">الأسبوع</div><div class="chip-val">${d.totalWeek || 0}</div><div class="chip-sub">خبر هذا الأسبوع</div></div>
+      </div>
+      <div class="sep"></div>
+      <div class="slbl">نشاط القنوات اليوم</div>
+      ${chRows}
+      <div class="sep"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span style="font-size:11px;color:var(--t4)">${d.totalToday || 0} مادة إعلامية · ${updatedAgo}</span>
+        <span class="ai-badge">${sparkle} تحليل ذكاء اصطناعي</span>
+      </div>
+      ${summaryHtml}
+    </div>
   </div>`;
 }
 
