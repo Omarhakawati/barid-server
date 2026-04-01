@@ -958,6 +958,9 @@ function selectChannel(id) {
     s.classList.toggle('active', s.id === `sch-${id}`);
   });
 
+  // Hide tabs for the aggregate بريد channel
+  document.querySelector('.tabs').style.display = id === 'barid' ? 'none' : '';
+
   // Clear new-content badge when opening this channel
   newCounts[id] = 0;
   const badge  = document.getElementById(`badge-${id}`);
