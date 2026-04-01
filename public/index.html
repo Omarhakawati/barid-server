@@ -277,10 +277,11 @@
   }
 
   .summary-hero {
-    font-size: 14px;
-    line-height: 1.9;
-    color: var(--t1);
+    font-size: 15px;
+    line-height: 2;
+    color: rgba(255,255,255,0.88);
     text-align: right;
+    letter-spacing: 0.01em;
   }
 
   .stat-grid {
@@ -1118,62 +1119,24 @@ function renderNews(d) {
 // ── Summary ──
 function renderSummary(d) {
   const summary = d.summary || '';
-  const topics  = (d.topics || []).slice(0, 4);
-  const colors  = TOPIC_COLORS;
-
-  const todayCount = (!d.seeding && d.tracked > 0)
-    ? d.tracked
-    : ((d.sources?.rss || 0) + (d.sources?.twitter || 0) || d.totalToday || 0);
-  const weekCount = (d.totalWeek > d.totalToday) ? d.totalWeek : null;
-  const rate      = d.rate || null;
-
-  const hasThree = weekCount && rate;
-  const gridClass = hasThree ? 'stat-grid three' : 'stat-grid';
-
-  const statCards = `
-    <div class="${gridClass}">
-      <div class="stat-card" style="--glow:rgba(102,153,255,0.10)">
-        <div class="stat-num" style="color:#6699ff">${todayCount}</div>
-        <div class="stat-lbl">اليوم</div>
-        ${rate && !hasThree ? `<div class="stat-sub">${rate} خبر/س</div>` : ''}
-      </div>
-      <div class="stat-card" style="--glow:rgba(40,149,106,0.10)">
-        <div class="stat-num" style="color:#28956a">${weekCount || '—'}</div>
-        <div class="stat-lbl">الأسبوع</div>
-        <div class="stat-sub">${weekCount ? 'خبر هذا الأسبوع' : 'يتراكم يومياً'}</div>
-      </div>
-      ${hasThree ? `
-      <div class="stat-card" style="--glow:rgba(176,122,34,0.10)">
-        <div class="stat-num" style="color:#b07a22">${rate}</div>
-        <div class="stat-lbl">خبر/ساعة</div>
-      </div>` : ''}
-    </div>`;
-
-  const topicBars = topics.length ? `
-    <div class="sep"></div>
-    <div class="slbl">توزيع التغطية</div>
-    <div class="topic-bars">
-      ${topics.map((t, i) => `
-        <div class="topic-bar-row2">
-          <div class="topic-bar-meta">
-            <span class="topic-bar-pct" style="color:${colors[i]}">${t.pct}%</span>
-            <span class="topic-bar-name">${t.nameAr}</span>
-          </div>
-          <div class="topic-track">
-            <div class="topic-fill" style="width:${t.pct}%;background:${colors[i]}"></div>
-          </div>
-        </div>`).join('')}
-    </div>` : '';
-
-  const words = (d.topWords || []).slice(0, 5).map(w =>
-    `<span class="word-tag"><span>${w.word}</span><span class="word-count">${w.count}</span></span>`
-  ).join('');
 
   const updatedAgo = d.updatedAt
     ? (Math.round((Date.now() - d.updatedAt) / 60000) <= 0 ? 'الآن' : 'منذ ' + Math.round((Date.now() - d.updatedAt) / 60000) + ' د')
     : '';
 
+  const totalSources = (d.sources?.rss || 0) + (d.sources?.twitter || 0) || d.totalToday || 0;
+
   const sparkle = `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>`;
+
+  const body = summary
+    ? `<div style="padding:20px 20px 24px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <span style="font-size:11px;color:var(--t4)">${totalSources} مادة إعلامية · ${updatedAgo}</span>
+          <span class="ai-badge">${sparkle} مُولَّد بالذكاء الاصطناعي</span>
+        </div>
+        <div class="summary-hero">${summary}</div>
+      </div>`
+    : `<div class="empty">جاري إعداد الملخص…</div>`;
 
   return `<div class="card">
     <div class="card-hdr">
@@ -1181,20 +1144,8 @@ function renderSummary(d) {
         <div class="card-lbl">ملخص اليوم</div>
         <div class="card-ch">${d.channel.nameAr}</div>
       </div>
-      <div class="card-time">${updatedAgo}</div>
     </div>
-    <div class="card-body">
-      ${statCards}
-      ${summary ? `
-        <div class="sep"></div>
-        <div style="display:flex;justify-content:flex-end">
-          <span class="ai-badge">${sparkle} مُولَّد بالذكاء الاصطناعي</span>
-        </div>
-        <div class="summary-hero">${summary.replace(/(\d+%?)/g, '<span class="hl">$1</span>')}</div>
-      ` : ''}
-      ${topicBars}
-      ${words ? `<div class="sep"></div><div class="slbl">أبرز الكلمات</div><div class="words">${words}</div>` : ''}
-    </div>
+    ${body}
   </div>`;
 }
 

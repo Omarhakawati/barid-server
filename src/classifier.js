@@ -70,31 +70,37 @@ No markdown, no explanations.`;
   return parsed.map(id => VALID_IDS.has(id) ? id : 'other');
 }
 
-// Generate an AI behavioral summary for a channel given topic distribution
-async function generateAISummary(channelNameAr, topicDist, articleCount, xEnabled) {
+// Generate a comprehensive AI summary of the day's actual content
+async function generateAISummary(channelNameAr, topicDist, articleCount, xEnabled, articles = []) {
   const cl = getClient();
-  if (!cl || !topicDist.length) return null;
+  if (!cl) return null;
 
-  const topicsText = topicDist
-    .map(t => `- ${t.nameAr}: ${t.pct}٪`)
-    .join('\n');
+  // Build a numbered list of today's article/tweet titles (up to 60 items)
+  const sample = articles.slice(0, 60);
+  const contentLines = sample.map((a, i) => {
+    const prefix = a.source === 'twitter' ? '🐦' : '📰';
+    return `${i + 1}. ${prefix} ${a.title}`;
+  }).join('\n');
 
-  const prompt = `أنت محلل إعلامي متخصص في رصد السلوك التحريري لوسائل الإعلام العربية.
+  const prompt = `أنت محرر صحفي محترف متخصص في تحليل تغطية وسائل الإعلام العربية.
 
 القناة: ${channelNameAr}
-عدد المقالات المحللة: ${articleCount} مقال خلال آخر 24 ساعة
-توزيع التغطية:
-${topicsText}
+المحتوى المنشور اليوم (${sample.length} مادة من أصل ${articleCount}):
 
-اكتب فقرة تحليلية واحدة موجزة (جملتان إلى ثلاث) تصف السلوك التحريري لهذه القناة بناءً على التوزيع أعلاه.
-- ركز على التوجه الرئيسي والأنماط اللافتة
-- استخدم لغة تحليلية مهنية بالعربية
-- لا تذكر الأرقام والنسب حرفياً، بل اعكسها في وصفك
-- لا تبدأ بـ "القناة" أو "هذه القناة"`;
+${contentLines}
+
+اكتب ملخصاً صحفياً شاملاً لما نشرته هذه القناة اليوم. المطلوب:
+- فقرة واحدة طويلة (6 إلى 8 جمل متصلة)
+- اذكر أبرز الأحداث والقضايا التي تناولتها القناة بالتفصيل
+- ارصد الأنماط التحريرية والتوجهات العامة
+- أشِر إلى الموضوعات المتكررة وزوايا التناول
+- أسلوب صحفي مهني رصين بالعربية الفصحى
+- لا تبدأ بـ "القناة" أو "هذه القناة"
+- لا تذكر أرقام المقالات أو النسب المئوية مباشرة`;
 
   const response = await cl.messages.create({
     model: 'claude-haiku-4-5',
-    max_tokens: 200,
+    max_tokens: 700,
     messages: [{ role: 'user', content: prompt }],
   });
 

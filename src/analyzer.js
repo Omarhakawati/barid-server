@@ -58,7 +58,8 @@ async function analyzeChannel(articles, channelNameAr = '') {
       channelNameAr,
       topicDist,
       working.length,
-      articles[0]?.source === 'twitter'
+      articles[0]?.source === 'twitter',
+      working  // pass actual articles for content-based summary
     );
   } catch (err) {
     console.warn('[analyzer] AI summary failed, using template:', err.message);
