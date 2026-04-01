@@ -1295,18 +1295,32 @@ function renderAggregate(d) {
     ? (Math.round((Date.now() - d.updatedAt) / 60000) <= 0 ? 'الآن' : 'منذ ' + Math.round((Date.now() - d.updatedAt) / 60000) + ' د')
     : '';
 
-  // Per-channel breakdown rows
+  // Per-channel breakdown — circular progress rings
   const maxCount = Math.max(...(d.channelBreakdown || []).map(c => c.totalToday || 0), 1);
-  const chRows = (d.channelBreakdown || []).map(c => {
-    const pct = Math.round((c.totalToday / maxCount) * 100);
+  const R = 26, CIRC = 2 * Math.PI * R;
+  const chCircles = (d.channelBreakdown || []).map(c => {
+    const pct  = c.totalToday / maxCount;
+    const dash = pct * CIRC;
     const color = CH_COLORS[c.id] || '#3d7dd4';
-    return `<div style="display:flex;flex-direction:column;gap:5px;padding:8px 0;border-bottom:0.5px solid var(--sub)">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span style="font-size:13px;font-weight:600;color:${color};font-variant-numeric:tabular-nums">${c.totalToday}</span>
-        <span style="font-size:13px;color:var(--t1);text-align:right">${c.nameAr}</span>
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+      <div style="position:relative;width:64px;height:64px">
+        <svg width="64" height="64" viewBox="0 0 64 64">
+          <circle fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"
+            cx="32" cy="32" r="${R}"/>
+          <circle fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round"
+            cx="32" cy="32" r="${R}"
+            stroke-dasharray="${dash.toFixed(1)} ${(CIRC - dash).toFixed(1)}"
+            transform="rotate(-90 32 32)"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+          font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--t1)">
+          ${c.totalToday}
+        </div>
       </div>
-      ${c.topTopic ? `<div style="font-size:10px;color:var(--t3);text-align:right">${c.topTopic}</div>` : ''}
-      <div class="topic-track"><div class="topic-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div style="font-size:10px;color:var(--t2);text-align:center;max-width:66px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.nameAr}</div>
+      ${c.topTopic ? `<div style="font-size:9px;color:var(--t4);text-align:center;max-width:66px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.topTopic}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -1365,7 +1379,9 @@ function renderAggregate(d) {
       </div>
       <div class="sep"></div>
       <div class="slbl">نشاط القنوات اليوم</div>
-      ${chRows}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px 6px">
+        ${chCircles}
+      </div>
       <div class="sep"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <span style="font-size:11px;color:var(--t4)">${d.totalToday || 0} مادة إعلامية · ${updatedAgo}</span>
