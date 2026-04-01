@@ -1,104 +1,56 @@
 // ─────────────────────────────────────────────────────────────
-//  بريد — Daily History Storage
-//  Saves per-channel article counts by date so weekly totals
-//  are based on real historical data, not just RSS feed window.
+//  بريد — Daily History (Redis-backed)
 //
-//  File: data/daily-counts.json
-//  Schema:
-//  {
-//    "ajabreaking": { "2026-03-26": 34, "2026-03-27": 41, ... },
-//    "bbc":         { "2026-03-26": 12, ... }
-//  }
+//  Keys:
+//    history:{channelId}:{YYYY-MM-DD} → integer (max articles seen that day)
+//
+//  Survives server restarts and Render deploys.
 // ─────────────────────────────────────────────────────────────
 
-const fs   = require('fs');
-const path = require('path');
+const { Redis } = require('@upstash/redis');
 
-const DATA_FILE = path.join(__dirname, '..', 'data', 'daily-counts.json');
+const redis = new Redis({
+  url:   process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-function today() {
-  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function load() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error('[history] Failed to load:', e.message);
-  }
-  return {};
+function last7Days() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return d.toISOString().slice(0, 10);
+  });
 }
 
-function save(data) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error('[history] Failed to save:', e.message);
-  }
-}
-
-// Record today's count for a channel.
-// Only updates if the new count is higher (handles multiple fetches per day).
-function recordToday(channelId, count) {
-  const data = load();
-  if (!data[channelId]) data[channelId] = {};
-
-  const key = today();
-  const existing = data[channelId][key] || 0;
+// Save today's count — only updates if new count is higher
+async function recordToday(channelId, count) {
+  if (!count || count <= 0) return;
+  const key      = `history:${channelId}:${todayStr()}`;
+  const existing = parseInt(await redis.get(key) || '0');
   if (count > existing) {
-    data[channelId][key] = count;
-    save(data);
-    pruneOldEntries(data, channelId);
+    await redis.set(key, count, { ex: 60 * 60 * 24 * 30 }); // 30-day TTL
   }
 }
 
-// Get the true weekly total from stored history (sum of last 7 days).
-// Falls back to the live count if no history exists yet.
-function getWeekTotal(channelId, liveTotal) {
-  const data = load();
-  const channelHistory = data[channelId];
-  if (!channelHistory || Object.keys(channelHistory).length === 0) {
-    return liveTotal; // no history yet, use live RSS count
-  }
-
+// Sum last 7 days from Redis; falls back to liveTotal if no data yet
+async function getWeekTotal(channelId, liveTotal) {
   const days = last7Days();
-  const total = days.reduce((sum, day) => sum + (channelHistory[day] || 0), 0);
-
-  // If history total is 0 (server just started), fall back to live
+  const keys  = days.map(d => `history:${channelId}:${d}`);
+  const vals  = await redis.mget(...keys);
+  const total = vals.reduce((sum, v) => sum + parseInt(v || '0'), 0);
   return total > 0 ? total : liveTotal;
 }
 
-// Returns an array of the last 7 date strings including today.
-function last7Days() {
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days;
-}
-
-// Returns last 7 days as { date, count } array for chart/trend use.
-function getWeekBreakdown(channelId) {
-  const data = load();
-  const channelHistory = data[channelId] || {};
-  return last7Days()
-    .reverse() // oldest first
-    .map(date => ({ date, count: channelHistory[date] || 0 }));
-}
-
-// Keep only 30 days of data per channel to prevent unbounded growth.
-function pruneOldEntries(data, channelId) {
-  const history = data[channelId];
-  if (!history) return;
-  const keys = Object.keys(history).sort();
-  if (keys.length > 30) {
-    keys.slice(0, keys.length - 30).forEach(k => delete history[k]);
-    save(data);
-  }
+// Returns last 7 days as [{ date, count }] oldest→newest
+async function getWeekBreakdown(channelId) {
+  const days = last7Days().reverse(); // oldest first
+  const keys  = days.map(d => `history:${channelId}:${d}`);
+  const vals  = await redis.mget(...keys);
+  return days.map((date, i) => ({ date, count: parseInt(vals[i] || '0') }));
 }
 
 module.exports = { recordToday, getWeekTotal, getWeekBreakdown };

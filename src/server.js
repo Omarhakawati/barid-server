@@ -122,13 +122,15 @@ async function buildChannelData(channel) {
   const analysis = await analyzeChannel(allArticles, channel.nameAr);
 
   // Accumulate truly new articles (bypasses RSS feed size limitation)
-  const tracking = trackArticles(channel.id, allArticles);
+  const tracking = await trackArticles(channel.id, allArticles);
 
   // Save today's count to history, then replace totalWeek with real historical sum
   const countForHistory = tracking.seeding ? analysis.totalToday : tracking.totalToday;
-  recordToday(channel.id, countForHistory);
-  const realWeekTotal = getWeekTotal(channel.id, analysis.totalWeek);
-  const weekBreakdown = getWeekBreakdown(channel.id);
+  await recordToday(channel.id, countForHistory);
+  const [realWeekTotal, weekBreakdown] = await Promise.all([
+    getWeekTotal(channel.id, analysis.totalWeek),
+    getWeekBreakdown(channel.id),
+  ]);
 
   const result = {
     channel: {

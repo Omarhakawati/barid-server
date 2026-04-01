@@ -1,89 +1,62 @@
 // ─────────────────────────────────────────────────────────────
-//  بريد — Article Accumulator & Forecast Engine
+//  بريد — Article Accumulator (Redis-backed)
 //
-//  Unlike the RSS-snapshot approach, this module:
-//  1. Tracks every unique article ID seen since server start
-//  2. Counts only truly NEW articles (never double-counts)
-//  3. Forecasts end-of-day total based on articles-per-hour rate
+//  Uses Upstash Redis to persist:
+//    seen:{channelId}:{date}  → Set of article IDs seen today
+//    count:{channelId}:{date} → Integer count of new articles today
 //
-//  State is in-memory. On first call per channel, we seed the
-//  seen-set without counting (baseline) so restarts don't
-//  inflate the count with old articles.
+//  On first call for a channel today: seeds the seen-set without
+//  counting (so server restarts don't inflate numbers).
+//  Every subsequent call: counts only truly new article IDs.
 // ─────────────────────────────────────────────────────────────
 
-const seen   = {}; // channelId → Set<articleId>
-const counts = {}; // channelId → { date, count, startedAt }
+const { Redis } = require('@upstash/redis');
+
+const redis = new Redis({
+  url:   process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-function midnightTs() {
-  const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime();
+  return new Date().toISOString().slice(0, 10);
 }
 
 function articleId(a) {
-  // Prefer link as stable ID; fall back to first 80 chars of title
   return (a.link && a.link.length > 10) ? a.link : a.title.slice(0, 80);
 }
 
 // ── Main entry point ──────────────────────────────────────────
-// Call after every fresh fetch. Returns tracking stats.
+async function trackArticles(channelId, articles) {
+  const today    = todayStr();
+  const seenKey  = `seen:${channelId}:${today}`;
+  const countKey = `count:${channelId}:${today}`;
 
-function trackArticles(channelId, articles) {
-  const today = todayStr();
-  const now   = Date.now();
+  const ids = articles.map(articleId).filter(Boolean);
+  if (ids.length === 0) return { totalToday: 0, seeding: false };
 
-  // Reset at midnight (new day)
-  if (counts[channelId] && counts[channelId].date !== today) {
-    delete seen[channelId];
-    delete counts[channelId];
+  // Check if we've seen this channel today yet
+  const seenExists = await redis.exists(seenKey);
+
+  if (!seenExists) {
+    // First call today — seed the seen-set, don't count
+    await redis.sadd(seenKey, ...ids);
+    await redis.expire(seenKey, 60 * 60 * 48);  // 48h TTL
+    return { totalToday: 0, seeding: true };
   }
 
-  // First call for this channel today: seed seen-set, don't count
-  if (!seen[channelId]) {
-    seen[channelId]   = new Set(articles.map(articleId).filter(Boolean));
-    counts[channelId] = { date: today, count: 0, startedAt: now };
-    return { totalToday: 0, forecast: null, rate: null, seeding: true };
+  // Get all IDs seen today, find new ones
+  const seenList = await redis.smembers(seenKey);
+  const seenSet  = new Set(seenList);
+  const newIds   = ids.filter(id => !seenSet.has(id));
+
+  if (newIds.length > 0) {
+    await redis.sadd(seenKey, ...newIds);
+    await redis.incrby(countKey, newIds.length);
+    await redis.expire(countKey,  60 * 60 * 48);
   }
 
-  // Find genuinely new articles
-  let newCount = 0;
-  articles.forEach(a => {
-    const id = articleId(a);
-    if (id && !seen[channelId].has(id)) {
-      seen[channelId].add(id);
-      newCount++;
-    }
-  });
-
-  counts[channelId].count += newCount;
-
-  const total   = counts[channelId].count;
-  const elapsed = (now - counts[channelId].startedAt) / 3600000; // hours tracked
-
-  // Forecast: need at least 30 min of data and at least 1 article counted
-  let forecast = null;
-  let rate     = null;
-
-  if (elapsed >= 0.5 && total >= 1) {
-    rate = total / elapsed; // articles per hour
-
-    // How many hours remain until midnight?
-    const hoursIntoDay = (now - midnightTs()) / 3600000;
-    const hoursLeft    = Math.max(0, 24 - hoursIntoDay);
-
-    forecast = Math.round(total + rate * hoursLeft);
-    rate     = Math.round(rate * 10) / 10; // 1 decimal place
-  }
-
-  return { totalToday: total, newCount, forecast, rate };
+  const total = parseInt(await redis.get(countKey) || '0');
+  return { totalToday: total, newCount: newIds.length, seeding: false };
 }
 
-function getTracked(channelId) {
-  const today = todayStr();
-  if (!counts[channelId] || counts[channelId].date !== today) return null;
-  return counts[channelId];
-}
-
-module.exports = { trackArticles, getTracked };
+module.exports = { trackArticles };
