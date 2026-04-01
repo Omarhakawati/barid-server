@@ -203,6 +203,40 @@
 
   .story.active .story-count { color: rgba(61,125,212,0.8); }
 
+  /* ── New content badge ── */
+  .story-ring { position: relative; }
+  .new-badge {
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #e03333;
+    border: 2px solid #000d28;
+    display: none;
+    z-index: 2;
+    animation: badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .new-badge.show { display: block; }
+  @keyframes badge-pop {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  /* Sidebar badge */
+  .sidebar-avatar { position: relative; }
+  .sidebar-new-badge {
+    position: absolute;
+    top: 0; left: 0;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #e03333;
+    border: 2px solid #000d28;
+    display: none;
+    z-index: 2;
+    animation: badge-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .sidebar-new-badge.show { display: block; }
+
   /* ── Tabs ── */
   .tabs {
     display: flex;
@@ -663,6 +697,7 @@ let channelData = {};
 let activeChannel = '';
 let activeTab = 'today';
 let currentSSE = null;
+let lastCounts = {}; // track previous counts per channel to detect new content
 
 // ── Boot ──
 async function boot() {
@@ -690,6 +725,7 @@ function renderStories() {
   rail.innerHTML = channels.map(ch => `
     <button class="story ${ch.id === activeChannel ? 'active' : ''}" id="story-${ch.id}" onclick="selectChannel('${ch.id}')">
       <div class="story-ring ${ch.id === activeChannel ? 'active' : ''}">
+        <div class="new-badge" id="badge-${ch.id}"></div>
         <div class="story-inner" style="background:${CH_COLORS[ch.id]||'#080f22'}">
           ${ch.nameAr.charAt(0)}
         </div>
@@ -705,7 +741,10 @@ function renderSidebar() {
   const el = document.getElementById('sidebar-channels');
   el.innerHTML = channels.map(ch => `
     <button class="sidebar-ch ${ch.id === activeChannel ? 'active' : ''}" id="sch-${ch.id}" onclick="selectChannel('${ch.id}')">
-      <div class="sidebar-avatar" style="background:${CH_COLORS[ch.id]||'#080f22'}">${ch.nameAr.charAt(0)}</div>
+      <div class="sidebar-avatar" style="background:${CH_COLORS[ch.id]||'#080f22'}">
+        <div class="sidebar-new-badge" id="sbadge-${ch.id}"></div>
+        ${ch.nameAr.charAt(0)}
+      </div>
       <div class="sidebar-info">
         <div class="sidebar-name">${ch.nameAr}</div>
         <div class="sidebar-count" id="scount-${ch.id}">جاري التحميل...</div>
@@ -725,6 +764,12 @@ function selectChannel(id) {
     s.classList.toggle('active', s.id === `sch-${id}`);
   });
 
+  // Clear new-content badge when opening this channel
+  const badge  = document.getElementById(`badge-${id}`);
+  const sbadge = document.getElementById(`sbadge-${id}`);
+  if (badge)  badge.classList.remove('show');
+  if (sbadge) sbadge.classList.remove('show');
+
   // Close previous SSE connection
   if (currentSSE) { currentSSE.close(); currentSSE = null; }
 
@@ -736,8 +781,19 @@ function selectChannel(id) {
   currentSSE = new EventSource(`${BASE}/api/channel/${id}/live`);
   currentSSE.onmessage = (e) => {
     const data = JSON.parse(e.data);
-    channelData[id] = data;
     const total = (data.sources?.rss||0) + (data.sources?.twitter||0) || data.totalToday || 0;
+    const prev = lastCounts[id];
+
+    // Show badge if count increased and channel is not currently open
+    if (prev !== undefined && total > prev && activeChannel !== id) {
+      const badge  = document.getElementById(`badge-${id}`);
+      const sbadge = document.getElementById(`sbadge-${id}`);
+      if (badge)  { badge.classList.remove('show'); void badge.offsetWidth; badge.classList.add('show'); }
+      if (sbadge) { sbadge.classList.remove('show'); void sbadge.offsetWidth; sbadge.classList.add('show'); }
+    }
+
+    lastCounts[id] = total;
+    channelData[id] = data;
     const c = document.getElementById(`count-${id}`);
     const sc = document.getElementById(`scount-${id}`);
     if(c) c.textContent = total || '—';
